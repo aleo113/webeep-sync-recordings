@@ -9,13 +9,14 @@ import { JSONFile } from "lowdb/node"
 /* eslint-enable import/no-unresolved */
 
 import { createLogger } from "./logger"
+import { RecordingCatalogItem } from "./recordings-types"
 const { log } = createLogger("Store")
 
 /***
  * store.json manifest version, to be increased when breaking changes are made so that a correct
  * fixes for the change can be implemented in the {@link updateManifestVersion} function
  */
-const CURRENT_MANIFEST_VERSION = 2
+const CURRENT_MANIFEST_VERSION = 5
 
 /**
  * Check in the Settings page in the app for detailed explanation of what each setting does
@@ -34,6 +35,19 @@ export interface Settings {
   notificationOnNewFiles?: boolean
   notificationOnMessage?: boolean
   maxConcurrentDownloads?: number
+  recordingsEnabled?: boolean
+  recordingsSyncInterval?: number
+  recordingsDownloadPath?: string
+  recordingsMaxConcurrent?: number
+  recordingsAutoDownload?: boolean
+  recordingsAutoTranscribe?: boolean
+  transcriberPythonPath?: string
+  transcriberPoliwebexPath?: string
+  transcriberWorkspacePath?: string
+  transcriberOutputPath?: string
+  transcriberMaterialsPath?: string
+  transcriberWhisperModel?: string
+  transcriberNotesMode?: "transcript-only" | "prompt-pack" | "api"
 }
 
 export interface Persistence {
@@ -41,6 +55,7 @@ export interface Persistence {
     [courseid: number]: {
       name: string
       shouldSync: boolean
+      archiveUrl?: string
     }
   }
   sentMessageNotifications: Record<string, { sentTimestamp: number }>
@@ -49,6 +64,19 @@ export interface Persistence {
    * whether or not a notification has already been sent to the user
    */
   notificationsHasBeenSent?: boolean
+  downloadedRecordings?: Record<
+    string,
+    {
+      webexUrl: string
+      title: string
+      courseId: number
+      downloadedAt: number
+      filePath: string
+    }
+  >
+  recordingsLastChecked?: number
+  recordingCatalog?: Record<string, RecordingCatalogItem>
+  spidCredentials?: string
 }
 
 export interface Store {
@@ -71,6 +99,24 @@ export const defaultSettings: Required<Settings> = {
   notificationOnNewFiles: true,
   notificationOnMessage: true,
   maxConcurrentDownloads: 5,
+  recordingsEnabled: true,
+  recordingsSyncInterval: 30, // minutes
+  recordingsDownloadPath: path.join(
+    app.getPath("documents"),
+    "/WeBeep Sync/Recordings/",
+  ),
+  recordingsMaxConcurrent: 1,
+  recordingsAutoDownload: false,
+  recordingsAutoTranscribe: false,
+  transcriberPythonPath: "python3",
+  transcriberPoliwebexPath:
+    process.env.POLIWEBEX_PATH ||
+    path.resolve(app.getAppPath(), "../Transcriber/PoliWebex"),
+  transcriberWorkspacePath: path.join(app.getPath("userData"), "transcriber"),
+  transcriberOutputPath: path.join(app.getPath("documents"), "WeBeep Notes"),
+  transcriberMaterialsPath: "",
+  transcriberWhisperModel: "small",
+  transcriberNotesMode: "transcript-only",
 }
 
 const storePath = path.join(app.getPath("userData"), "store.json")
@@ -99,17 +145,23 @@ function checkStoreIntegrity() {
       persistence: {
         courses: {},
         sentMessageNotifications: {},
+        downloadedRecordings: {},
       },
     }
   if (!store.data.persistence) {
     store.data.persistence = {
       courses: {},
       sentMessageNotifications: {},
+      downloadedRecordings: {},
     }
   } else {
     if (!store.data.persistence.courses) store.data.persistence.courses = {}
     if (!store.data.persistence.sentMessageNotifications)
       store.data.persistence.sentMessageNotifications = {}
+    if (!store.data.persistence.downloadedRecordings)
+      store.data.persistence.downloadedRecordings = {}
+    if (!store.data.persistence.recordingCatalog)
+      store.data.persistence.recordingCatalog = {}
 
     for (const id in store.data.persistence.courses) {
       // for retrocompatibility, if the shape is not right reset the whole object
@@ -158,6 +210,39 @@ async function updateManifestVersion() {
       } catch (e) {
         log(`ignoring error while trimming course ${id}`)
       }
+    }
+  }
+
+  if (ver < 3) {
+    // initialize new recordings persistence fields
+    store.data.persistence.downloadedRecordings = {}
+    store.data.persistence.recordingsLastChecked = 0
+    store.data.persistence.spidCredentials = undefined
+  }
+  if (ver < 4) {
+    delete (store.data.settings as Record<string, unknown>).notesProviderApiKey
+    delete (store.data.settings as Record<string, unknown>).notesProvider
+    delete (store.data.settings as Record<string, unknown>).notesModel
+  }
+  if (ver < 5) {
+    const transcriberRoot = path.resolve(app.getAppPath(), "../Transcriber")
+    const localPython = path.join(transcriberRoot, ".venv", "bin", "python")
+    try {
+      await fs.access(localPython)
+      if (
+        !store.data.settings.transcriberPythonPath ||
+        store.data.settings.transcriberPythonPath === "python3"
+      ) {
+        store.data.settings.transcriberPythonPath = localPython
+      }
+    } catch {
+      // Keep the configured/system Python when the sibling development venv is absent.
+    }
+    if (!store.data.settings.transcriberPoliwebexPath) {
+      store.data.settings.transcriberPoliwebexPath = path.join(
+        transcriberRoot,
+        "PoliWebex",
+      )
     }
   }
 

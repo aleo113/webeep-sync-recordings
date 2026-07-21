@@ -1177,3 +1177,186 @@ $modal-anim-time: 0.15s;
     }
   }
 }
+
+.recordings-view {
+  .recordings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    h2 {
+      margin: 0;
+    }
+  }
+  .sync-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    &.syncing {
+      opacity: 0.7;
+      .spin {
+        animation: spin 1s linear infinite;
+      }
+    }
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .recordings-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    text-align: center;
+    color: #888;
+    gap: 16px;
+  }
+  .recordings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .recording-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border-radius: 8px;
+    background-color: $very-light-gray;
+    @media (prefers-color-scheme: dark) {
+      background-color: $almost-black;
+    }
+    .recording-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      .recording-course {
+        font-weight: bold;
+        font-family: "Poppins", sans-serif;
+      }
+      .recording-date {
+        font-size: 0.85em;
+        opacity: 0.7;
+      }
+    }
+    .recording-actions {
+      display: flex;
+      gap: 8px;
+      .downloading-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: $system-blue;
+        .spin {
+          animation: spin 1s linear infinite;
+        }
+      }
+      .error-status {
+        color: $danger;
+        font-size: 0.85em;
+      }
+      .icon-button {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: $bright;
+        &:hover {
+          background-color: $bright-less;
+        }
+        &.danger {
+          color: $danger;
+          &:hover {
+            background-color: $danger-less;
+          }
+        }
+      }
+    }
+  }
+}
+
+.spid-credentials-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  .credential-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: bold;
+      font-family: "Poppins", sans-serif;
+      font-size: 0.95em;
+      svg {
+        color: $bright;
+      }
+    }
+    input {
+      border: none;
+      background-color: $very-light-gray;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 1em;
+      @media (prefers-color-scheme: dark) {
+        background-color: $almost-black;
+      }
+    }
+    .password-input {
+      display: flex;
+      gap: 8px;
+      input {
+        flex: 1;
+      }
+      .toggle-visibility {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 8px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: $bright;
+        &:hover {
+          background-color: $bright-less;
+        }
+      }
+    }
+  }
+  .credential-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .credential-note {
+    font-size: 0.8em;
+    opacity: 0.7;
+    color: #888;
+    margin-top: 8px;
+  }
+}
+
+.path-button {
+  text-align: left;
+  background-color: $very-light-gray !important;
+  border: none;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  @media (prefers-color-scheme: dark) {
+    background-color: $almost-black !important;
+  }
+}

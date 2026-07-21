@@ -20,6 +20,8 @@ import { storeIsReady, store } from "./modules/store"
 import { downloadManager, NewFilesList } from "./modules/download"
 import { createWindow, send, focus } from "./modules/window"
 import { setupTray, updateTrayContext, tray } from "./modules/tray"
+import { recordingsManager } from "./modules/recordings-manager"
+import { credentialsManager } from "./modules/credentials"
 
 import { i18nInit, i18n } from "./modules/i18next"
 
@@ -90,6 +92,11 @@ async function setLoginItem(openAtLogin: boolean) {
 loginManager.on("token", async () => {
   send("is-logged", true)
   send("courses", await moodleClient.getCoursesWithoutCache())
+  recordingsManager
+    .discoverRecordings()
+    .catch(err =>
+      error(`Post-login recordings discovery failed: ${String(err)}`),
+    )
 })
 loginManager.on("logout", () => send("is-logged", false))
 moodleClient.on("network_event", conn => send("network_event", conn))
@@ -195,6 +202,36 @@ downloadManager.on("new-files", files => {
       showNewFilesNotification(numfiles)
     }
   }
+})
+
+recordingsManager.on("sync-start", () => send("recordings-syncing", true))
+recordingsManager.on("sync-complete", data => {
+  send("recordings-syncing", false)
+  send("recordings-sync-complete", data)
+})
+recordingsManager.on("sync-error", err => {
+  send("recordings-syncing", false)
+  send("recordings-sync-error", err.message)
+})
+recordingsManager.on("new-file", ({ recording, filePath }) => {
+  send("recording-new-file", { recording, filePath })
+
+  if (
+    store.data.settings.keepOpenInBackground &&
+    store.data.settings.notificationOnNewFiles &&
+    Notification.isSupported()
+  ) {
+    new Notification({
+      title: "Nuova registrazione scaricata",
+      body: `${recording.courseName}: ${recording.title}`,
+    }).show()
+  }
+})
+recordingsManager.on("progress", data => {
+  send("recording-progress", data)
+})
+recordingsManager.on("catalog", data => {
+  send("recordings-catalog", data)
 })
 
 moodleClient.on("courses", async c => send("courses", c))
@@ -320,6 +357,9 @@ app.on("ready", async () => {
   log("App ready!")
   const loginItemSettings = app.getLoginItemSettings(windowsLoginSettings)
   await storeIsReady()
+
+  // start recordings polling
+  recordingsManager.startPolling()
 
   app.setAppUserModelId("webeep-sync") // windows wants this thing
 
@@ -521,6 +561,7 @@ ipcMain.handle("set-settings", async (e, newSettings) => {
   // launch on stratup
   await setLoginItem(store.data.settings.openAtLogin)
   await store.write()
+  recordingsManager.restartPolling()
 })
 
 ipcMain.handle("get-native-theme", e => {
@@ -598,4 +639,90 @@ ipcMain.handle("mark-notification-read", async (e, id: number) => {
 
 ipcMain.handle("mark-all-notifications-read", async () => {
   await moodleClient.markAllNotificationsAsRead()
+})
+
+ipcMain.handle("recordings:get-credentials", async () =>
+  credentialsManager.load(),
+)
+
+ipcMain.handle("recordings:set-credentials", async (e, creds) =>
+  credentialsManager.save(creds),
+)
+
+ipcMain.handle("recordings:clear-credentials", async () =>
+  credentialsManager.clear(),
+)
+
+ipcMain.handle("recordings:get-downloaded", () =>
+  recordingsManager.getDownloadedRecordingsList(),
+)
+
+ipcMain.handle("recordings:get-catalog", async () => {
+  await storeIsReady()
+  return recordingsManager.getCatalog()
+})
+
+ipcMain.handle("recordings:sync-now", async () => {
+  await recordingsManager.syncRecordings()
+  return { success: true }
+})
+
+ipcMain.handle("recordings:delete", async (e, recordingId: string) => {
+  await recordingsManager.deleteRecording(recordingId)
+  return { success: true }
+})
+
+ipcMain.handle("recordings:open", async (e, recordingId: string) => {
+  await recordingsManager.openRecording(recordingId)
+  return { success: true }
+})
+
+ipcMain.handle("recordings:get-sync-state", () =>
+  recordingsManager.getSyncState(),
+)
+
+ipcMain.handle("recordings:download", async (e, recordingIds: unknown) => {
+  if (
+    !Array.isArray(recordingIds) ||
+    !recordingIds.every(id => typeof id === "string")
+  ) {
+    throw new Error("recordingIds must be an array of strings")
+  }
+  await recordingsManager.downloadSelected(recordingIds)
+  return { success: true }
+})
+
+ipcMain.handle("recordings:transcribe", async (e, recordingIds: unknown) => {
+  if (
+    !Array.isArray(recordingIds) ||
+    !recordingIds.every(id => typeof id === "string")
+  ) {
+    throw new Error("recordingIds must be an array of strings")
+  }
+  await recordingsManager.transcribeSelected(recordingIds)
+  return { success: true }
+})
+
+ipcMain.handle("recordings:cancel", (e, recordingId: unknown) => {
+  if (typeof recordingId !== "string") {
+    throw new Error("recordingId must be a string")
+  }
+  return (
+    recordingsManager.cancelDownload(recordingId) ||
+    recordingsManager.cancelTranscription(recordingId)
+  )
+})
+
+ipcMain.handle("recordings:select-download-path", async () => {
+  const { dialog } = await import("electron")
+  const result = await dialog.showOpenDialog({
+    properties: ["openDirectory", "createDirectory"],
+    title: "Select recordings download folder",
+  })
+  if (!result.canceled) {
+    store.data.settings.recordingsDownloadPath = result.filePaths[0]
+    await store.write()
+    return result.filePaths[0]
+  }
+  return null
 })

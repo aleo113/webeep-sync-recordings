@@ -18,6 +18,7 @@ import { SyncSettings } from "./views/SyncSettings"
 import { SettingsModal } from "./views/Settings"
 import { CourseList } from "./views/CourseList"
 import { SyncProgress } from "./views/SyncProgress"
+import { RecordingsView } from "./views/RecordingsView"
 
 import { Course } from "../modules/moodle"
 
@@ -109,6 +110,7 @@ const App: FC = () => {
           <SyncSettings />
           <SyncProgress />
           {isLogged && courses ? <CourseList courses={courses} /> : undefined}
+          {isLogged ? <RecordingsView /> : undefined}
           {setting ? (
             <SettingsModal
               onClose={() => {

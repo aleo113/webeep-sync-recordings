@@ -12,7 +12,6 @@ const { log, debug } = createLogger("MoodleClient")
 export const EXCLUDED_MODNAMES = [
   "page",
   "forum",
-  "url",
   "wooclap",
   "choice",
   "feedback",
@@ -25,6 +24,7 @@ export interface Course {
   fullname: string
   name: string
   shouldSync: boolean
+  archiveUrl?: string
 }
 
 export interface FileInfo {
@@ -45,6 +45,7 @@ export type Contents = {
     id: number
     name: string
     modname: string
+    url?: string
     contents?: ({
       type: string
     } & FileInfo)[]
@@ -59,6 +60,13 @@ export type MoodleNotification = {
   read: boolean
   url: string
   courseid?: string
+}
+
+export interface RecordingModule {
+  id: number
+  name: string
+  url: string
+  courseId: number
 }
 
 function getDefaultName(fullname: string) {
@@ -76,6 +84,7 @@ export declare interface MoodleClient {
     event: "notifications",
     listener: (notifications: MoodleNotification[]) => void,
   ): this
+  getRecordingModules(course: Course): Promise<RecordingModule[]>
 }
 export class MoodleClient extends EventEmitter {
   userid?: number
@@ -371,12 +380,56 @@ export class MoodleClient extends EventEmitter {
   }
 
   /**
+   * Gets recording modules (Archivio registrazioni) from a course
+   * @param course the course object from {@link getCourses}
+   * @returns a promise that resolves to an array of RecordingModule objects
+   */
+  async getRecordingModules(course: Course): Promise<RecordingModule[]> {
+    const contents: Contents = await this.call(
+      "core_course_get_contents",
+      { courseid: course.id },
+      false,
+    )
+    const modules: RecordingModule[] = []
+
+    for (const contentGroup of contents) {
+      for (const module of contentGroup.modules) {
+        const {
+          id,
+          name,
+          modname,
+          url: activityUrl,
+          contents: moduleContents,
+        } = module
+
+        if (modname !== "url") continue
+
+        const externalUrl = moduleContents?.find(item => item.fileurl)?.fileurl
+        const url = externalUrl || activityUrl
+        if (!url) {
+          debug(`URL activity ${id} (${name}) has no resolvable URL`)
+          continue
+        }
+        modules.push({
+          id,
+          name,
+          url,
+          courseId: course.id,
+        })
+      }
+    }
+
+    return modules
+  }
+
+  /**
    * Gets all notifications from the moodle API, as displayed on the webpage
    *
    * Sets the notification cache on call completion and emits the 'notifications' event
    * @returns a promise that resolves to an array with all the Notification objects
    */
   async getNotifications(): Promise<MoodleNotification[]> {
+    if (!loginManager.isLogged) return []
     try {
       // this call can fail silently, the notifications will just not be updated
       // an update will occur anyway when the notifications are checked in the background

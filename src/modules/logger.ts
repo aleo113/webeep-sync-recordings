@@ -69,31 +69,44 @@ class Logger extends EventEmitter {
     }
   }
 
-  error(message: unknown, _module?: string) {
+  private formatLogMessage(message: unknown, extra?: unknown) {
+    let msg = String(message)
+
+    if (extra !== undefined) {
+      if (typeof extra === "string") {
+        msg += ` [${extra}]`
+      } else if (typeof extra === "object" && extra !== null) {
+        msg += ` ${JSON.stringify(extra)}`
+      } else {
+        msg += ` ${String(extra)}`
+      }
+    }
+
+    return msg
+  }
+
+  error(message: unknown, extra?: unknown) {
     if (this.logLevel < LogLevel.WARN) return
     try {
-      const mstr = _module ? ` [${_module}]` : ""
-      const msg = `[${timeStamp()}]${mstr} <WARN> ${String(message)}`
+      const msg = `[${timeStamp()}] <WARN> ${this.formatLogMessage(message, extra)}`
       if (!this.logFile) console.error(msg)
       else this.writeToFile(msg)
     } catch (e) {}
   }
 
-  log(message: unknown, _module?: string) {
+  log(message: unknown, extra?: unknown) {
     if (this.logLevel < LogLevel.INFO) return
     try {
-      const mstr = _module ? ` [${_module}]` : ""
-      const msg = `[${timeStamp()}]${mstr} <INFO> ${String(message)}`
+      const msg = `[${timeStamp()}] <INFO> ${this.formatLogMessage(message, extra)}`
       if (!this.logFile) console.log(msg)
       else this.writeToFile(msg)
     } catch (e) {}
   }
 
-  debug(message: unknown, _module?: string) {
+  debug(message: unknown, extra?: unknown) {
     if (this.logLevel < LogLevel.DEBUG) return
     try {
-      const mstr = _module ? ` [${_module}]` : ""
-      const msg = `[${timeStamp()}]${mstr} <DBUG> ${String(message)}`
+      const msg = `[${timeStamp()}] <DBUG> ${this.formatLogMessage(message, extra)}`
       if (!this.logFile) console.log(msg)
       else this.writeToFile(msg)
     } catch (e) {}
@@ -115,8 +128,20 @@ class Logger extends EventEmitter {
 }
 const logger = new Logger()
 export default logger
+export type LoggerFunction = (message: unknown, extra?: unknown) => void
 export const createLogger = (
   moduleName: string,
-): ReturnType<typeof logger.createLogger> => {
-  return logger.createLogger(moduleName)
+): {
+  error: LoggerFunction
+  log: LoggerFunction
+  debug: LoggerFunction
+} => {
+  return {
+    error: (message: unknown, extra?: unknown) =>
+      logger.error(message, { moduleName, extra }),
+    log: (message: unknown, extra?: unknown) =>
+      logger.log(message, { moduleName, extra }),
+    debug: (message: unknown, extra?: unknown) =>
+      logger.debug(message, { moduleName, extra }),
+  }
 }

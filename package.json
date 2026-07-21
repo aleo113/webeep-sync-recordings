@@ -1,11 +1,11 @@
 {
-  "name": "webeep-sync",
-  "productName": "WeBeep Sync",
-  "version": "1.0.3",
-  "description": "keep your webeep files synced",
+  "name": "webeep-sync-recordings",
+  "productName": "WeBeep Sync Recordings",
+  "version": "1.0.0",
+  "description": "keep your webeep files and recordings synced",
   "repository": {
     "type": "git",
-    "url": "https://github.com/toto04/webeep-sync.git"
+    "url": "git+ssh://git@github.com/aleo113/webeep-sync-recordings.git"
   },
   "main": ".webpack/main",
   "scripts": {

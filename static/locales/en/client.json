@@ -100,5 +100,71 @@
       "invalidCharacters": "These characters cannot be used: ",
       "errPerm": "Cannot rename the folder, you might have a file open inside of it"
     }
+  },
+  "recordings": {
+    "title": "Recordings",
+    "syncNow": "Check now",
+    "syncing": "Checking...",
+    "loading": "Loading...",
+    "noRecordings": "No recordings downloaded",
+    "confirmDelete": "Delete this recording?",
+    "downloading": "Downloading...",
+    "error": "Error",
+    "play": "Play",
+    "openFolder": "Open folder",
+    "delete": "Delete"
+    ,"downloadSelected": "Download selected"
+    ,"transcribeSelected": "Transcribe selected"
+    ,"cancel": "Cancel"
+    ,"discoverySummary": "Checked {{activities}} link activities in {{courses}} courses; found {{recordings}} recordings."
+    ,"status": {
+      "available": "Available",
+      "downloading": "Downloading",
+      "downloaded": "Downloaded",
+      "transcribing": "Transcribing",
+      "completed": "Completed",
+      "error": "Error",
+      "unsupported": "Unsupported"
+    }
+  },
+  "settings": {
+    "recordingsSection": "Recordings (WebEx)",
+    "recordingsEnabled": "Enable recordings sync",
+    "recordingsEnabled_desc": "Periodically discover WebEx recordings in selected courses",
+    "recordingsSyncInterval": "Sync interval (minutes)",
+    "recordingsSyncInterval_desc": "How often to check for new recordings",
+    "recordingsDownloadPath": "Recordings download folder",
+    "recordingsDownloadPath_desc": "Where to save downloaded video files",
+    "recordingsMaxConcurrent": "Max concurrent downloads",
+    "recordingsMaxConcurrent_desc": "Maximum number of recordings to download simultaneously",
+    "recordingsAutoDownload": "Automatically download new recordings",
+    "recordingsAutoTranscribe": "Automatically transcribe downloaded recordings",
+    "transcriberSection": "Transcriber",
+    "transcriberPythonPath": "Python executable",
+    "transcriberPoliwebexPath": "PoliWebex folder",
+    "transcriberMaterialsPath": "Course materials folder",
+    "transcriberOutputPath": "Notes output folder",
+    "transcriberWhisperModel": "Whisper model",
+    "transcriberNotesMode": "Output mode",
+    "transcriptOnly": "Transcript only",
+    "promptPack": "Prompt pack",
+    "generatedNotes": "Generated notes",
+    "spidCredentials": "SPID Credentials (for WebEx)",
+    "spidUsername": "SPID Username",
+    "spidUsernamePlaceholder": "Your SPID username (e.g. name.surname)",
+    "spidPassword": "SPID Password",
+    "spidPasswordPlaceholder": "Your SPID password",
+    "polimiEmail": "PoliMi Email",
+    "polimiEmailPlaceholder": "name.surname@mail.polimi.it",
+    "fillAllFields": "Fill all fields",
+    "credentialsSaved": "Credentials saved successfully",
+    "credentialsSaveError": "Error saving credentials",
+    "confirmClearCredentials": "Remove saved credentials?",
+    "credentialsCleared": "Credentials removed",
+    "saveCredentials": "Save credentials",
+    "updateCredentials": "Update credentials",
+    "clearCredentials": "Remove credentials",
+    "saving": "Saving...",
+    "credentialsNote": "Credentials are used to access WebEx and download recordings. They are stored encrypted on your computer."
   }
 }

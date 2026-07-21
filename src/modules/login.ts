@@ -24,12 +24,51 @@ class LoginManager extends EventEmitter {
 
   loginWindow?: BrowserWindow
 
+  private completeLogin(token: string) {
+    this.isLogged = true
+    this.token = token
+    this.emit("token", token)
+    this.loginWindow?.destroy?.()
+  }
+
+  private tryHandleTokenUrl(url: string): boolean {
+    const normalized = url.trim()
+    if (
+      !normalized.startsWith("moodlemobile://") &&
+      !normalized.startsWith("moodlemobile:")
+    )
+      return false
+
+    const match =
+      normalized.match(/(?:^|[?&])token=([^&]+)/i) ||
+      normalized.match(/^moodlemobile:\/\/token=([^&]+)/i)
+    const tokenPart = match?.[1]
+    if (!tokenPart) return false
+
+    try {
+      const parsedToken = Buffer.from(decodeURIComponent(tokenPart), "base64")
+        .toString()
+        .split(":::")[1]
+      if (parsedToken) {
+        this.completeLogin(parsedToken)
+        return true
+      }
+    } catch (e) {
+      debug(`Failed to parse Moodle mobile token: ${String(e)}`)
+    }
+
+    return false
+  }
+
   constructor() {
     super()
 
     // reads the token file, if the file exists, decrypts the content and sets the token
     fs.readFile(tokenPath)
       .then(enc => {
+        if (!safeStorage.isEncryptionAvailable()) {
+          throw new Error("Secure token storage is unavailable")
+        }
         log("previous token found!")
         this.token = safeStorage.decryptString(enc)
         this.isLogged = true
@@ -54,13 +93,14 @@ class LoginManager extends EventEmitter {
 
       // the moodlemobile:// protocol gets intercepted and the token is extracted from the response
       protocol.registerHttpProtocol("moodlemobile", (req, cb) => {
-        debug("Intercepted call to moodlemobile protocol")
-        const b64token = req.url.split("token=")[1]
-        const token = Buffer.from(b64token, "base64").toString().split(":::")[1]
-        this.isLogged = true
-        this.token = token
-        this.emit("token", token)
-        this.loginWindow?.destroy?.()
+        debug("Intercepted Moodle mobile authentication callback")
+        const handled = this.tryHandleTokenUrl(req.url)
+        if (handled) {
+          cb({})
+          return
+        }
+        debug("Could not parse Moodle mobile authentication callback")
+        cb({})
       })
     })
   }
@@ -97,7 +137,7 @@ class LoginManager extends EventEmitter {
    * gets closed without the login process completing
    */
   createLoginWindow(): Promise<boolean> {
-    return new Promise((resolve, reject) => {
+    return new Promise(resolve => {
       if (!this.loginWindow) {
         debug("Creating Login Window...")
         // create the window if it doesn't exist
@@ -120,19 +160,36 @@ class LoginManager extends EventEmitter {
         })
       } else this.loginWindow.focus() // if the window already exists, focus it
 
-      // called when the window gets closed before the token is retrieved
+      const timeout = setTimeout(async () => {
+        log("Login process timed out")
+        await this.logout()
+        resolve(false)
+      }, 180000)
+
       const onclose = async () => {
+        clearTimeout(timeout)
         log("Login process aborted!")
         await this.logout()
         resolve(false)
       }
+
       this.loginWindow.once("close", onclose)
       this.once("token", token => {
-        // when the token is retrieved, remove the logout listener and resolve the promise
+        clearTimeout(timeout)
+        this.loginWindow?.removeListener("close", onclose)
         log("Login process completed!")
         resolve(true)
-        this.loginWindow.removeListener("close", onclose)
-        fs.writeFile(tokenPath, safeStorage.encryptString(token)) // writes the token to file
+        if (safeStorage.isEncryptionAvailable()) {
+          void fs
+            .writeFile(tokenPath, safeStorage.encryptString(token))
+            .catch(function (_: unknown): void {
+              return undefined
+            })
+        } else {
+          log(
+            "Secure token storage is unavailable; login will remain in memory for this session only",
+          )
+        }
       })
     })
   }

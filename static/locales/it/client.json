@@ -87,6 +87,44 @@
     "newCourses_desc": "Quando nuovi corsi vengono trovati, verranno aggiunti automaticamente alla lista dei corsi che verranno sincronizzati",
     "concurrentDownloads": "Download contemporanei",
     "concurrentDownloads_desc": "Un numero più alto di download contemporanei può aumentare la velocità di download, ma rischia di occupare più banda. Si consiglia un numero più basso per connessioni più lente.",
+    "recordingsSection": "Registrazioni (WebEx)",
+    "recordingsEnabled": "Abilita sync registrazioni",
+    "recordingsEnabled_desc": "Cerca periodicamente le registrazioni WebEx nei corsi selezionati",
+    "recordingsSyncInterval": "Intervallo sync (minuti)",
+    "recordingsSyncInterval_desc": "Ogni quanto controllare la presenza di nuove registrazioni",
+    "recordingsDownloadPath": "Cartella download registrazioni",
+    "recordingsDownloadPath_desc": "Dove salvare i file video scaricati",
+    "recordingsMaxConcurrent": "Download simultanei max",
+    "recordingsMaxConcurrent_desc": "Numero massimo di registrazioni da scaricare contemporaneamente",
+    "recordingsAutoDownload": "Scarica automaticamente le nuove registrazioni",
+    "recordingsAutoTranscribe": "Trascrivi automaticamente le registrazioni scaricate",
+    "transcriberSection": "Transcriber",
+    "transcriberPythonPath": "Eseguibile Python",
+    "transcriberPoliwebexPath": "Cartella PoliWebex",
+    "transcriberMaterialsPath": "Cartella materiali del corso",
+    "transcriberOutputPath": "Cartella output appunti",
+    "transcriberWhisperModel": "Modello Whisper",
+    "transcriberNotesMode": "Modalità output",
+    "transcriptOnly": "Solo trascrizione",
+    "promptPack": "Prompt pack",
+    "generatedNotes": "Appunti generati",
+    "spidCredentials": "Credenziali SPID (per WebEx)",
+    "spidUsername": "Username SPID",
+    "spidUsernamePlaceholder": "Il tuo username SPID (es. nome.cognome)",
+    "spidPassword": "Password SPID",
+    "spidPasswordPlaceholder": "La tua password SPID",
+    "polimiEmail": "Email PoliMi",
+    "polimiEmailPlaceholder": "nome.cognome@mail.polimi.it",
+    "fillAllFields": "Compila tutti i campi",
+    "credentialsSaved": "Credenziali salvate correttamente",
+    "credentialsSaveError": "Errore durante il salvataggio delle credenziali",
+    "confirmClearCredentials": "Rimuovere le credenziali salvate?",
+    "credentialsCleared": "Credenziali rimosse",
+    "saveCredentials": "Salva credenziali",
+    "updateCredentials": "Aggiorna credenziali",
+    "clearCredentials": "Rimuovi credenziali",
+    "saving": "Salvataggio...",
+    "credentialsNote": "Le credenziali vengono usate per accedere a WebEx e scaricare le registrazioni. Vengono salvate in modo criptato sul tuo computer.",
     "logout": "Log out",
     "cancel": "Annulla",
     "ok": "Ok"
@@ -99,6 +137,32 @@
       "tooLong": "Massimo 255 caratteri!",
       "invalidCharacters": "Questi caratteri non possono essere usati: ",
       "errPerm": "Impossibile rinominare la cartella, potresti aver aperto dei file al suo interno"
+    }
+  },
+  "recordings": {
+    "title": "Registrazioni",
+    "syncNow": "Verifica ora",
+    "syncing": "Verifica in corso...",
+    "loading": "Caricamento...",
+    "noRecordings": "Nessuna registrazione scaricata",
+    "confirmDelete": "Eliminare questa registrazione?",
+    "downloading": "Download in corso...",
+    "error": "Errore",
+    "play": "Riproduci",
+    "openFolder": "Apri cartella",
+    "delete": "Elimina"
+    ,"downloadSelected": "Scarica selezionate"
+    ,"transcribeSelected": "Trascrivi selezionate"
+    ,"cancel": "Annulla"
+    ,"discoverySummary": "Controllate {{activities}} attività link in {{courses}} corsi; trovate {{recordings}} registrazioni."
+    ,"status": {
+      "available": "Disponibile",
+      "downloading": "Download",
+      "downloaded": "Scaricata",
+      "transcribing": "Trascrizione",
+      "completed": "Completata",
+      "error": "Errore",
+      "unsupported": "Non supportata"
     }
   }
 }
