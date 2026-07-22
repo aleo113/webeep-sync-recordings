@@ -9,6 +9,9 @@ class TranscriptSegment:
     start: float
     end: float
     text: str
+    avg_logprob: float | None = None
+    no_speech_prob: float | None = None
+    compression_ratio: float | None = None
 
 
 @dataclass

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -8,9 +9,11 @@ from unittest.mock import patch
 from src.models import PdfChunk, PdfPageContext, RetrievalMatch, TranscriptResult, TranscriptSegment
 from src.notes_generator import (
     _append_course_material_references,
+    _allocate_visual_budget,
     _build_notes_prompt,
     _ensure_slide_images,
     _run_codex,
+    _validate_and_copy_visual_assets,
     normalize_obsidian_math,
 )
 
@@ -125,6 +128,59 @@ class NotesGeneratorTests(unittest.TestCase):
         )
         self.assertIn("Cited Slides.pdf", result)
         self.assertNotIn("Unrelated Book.pdf", result)
+
+    def test_prompt_maps_video_frame_to_timestamp_and_transcript(self) -> None:
+        transcript = TranscriptResult(
+            language="en",
+            full_text="The professor completes the derivation.",
+            segments=[TranscriptSegment(120, 180, "The professor completes the derivation.")],
+        )
+        prompt = _build_notes_prompt(
+            lecture_id="lecture",
+            source_url="https://example.test/lecture",
+            transcript=transcript,
+            page_contexts=[],
+            matches=[],
+            rendered_images=[],
+            video_frames=[
+                {
+                    "name": "lecture-video-00h02m30s.jpg",
+                    "path": "/tmp/frame.jpg",
+                    "caption": "Recording frame at 00:02:30",
+                    "timestamp": 150,
+                    "transcript_excerpt": "The professor completes the derivation.",
+                }
+            ],
+        )
+        self.assertIn("lecture-video-00h02m30s.jpg -> FRAME-1", prompt)
+        self.assertIn("Timestamp: 00:02:30", prompt)
+        self.assertIn("The professor completes the derivation.", prompt)
+
+    def test_combined_visual_budget_reserves_video_slots(self) -> None:
+        slides = [{"name": f"slide-{index}.png"} for index in range(8)]
+        frames = [
+            {"name": f"frame-{index}.jpg", "score": 1.0 - index / 10, "timestamp": index * 60}
+            for index in range(8)
+        ]
+        selected_slides, selected_frames = _allocate_visual_budget(slides, frames, 12)
+        self.assertEqual(len(selected_slides), 7)
+        self.assertEqual(len(selected_frames), 5)
+        self.assertEqual(len(selected_slides) + len(selected_frames), 12)
+
+    def test_visual_assets_copies_only_valid_referenced_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "working.jpg"
+            source.write_bytes(b"image")
+            notes, embedded = _validate_and_copy_visual_assets(
+                "![[assets/frame.jpg]]\n![[assets/invented.jpg]]",
+                [{"name": "frame.jpg", "path": str(source)}],
+                root / "assets",
+            )
+            self.assertIn("![[assets/frame.jpg]]", notes)
+            self.assertNotIn("invented.jpg", notes)
+            self.assertEqual(embedded, {"frame.jpg"})
+            self.assertTrue((root / "assets" / "frame.jpg").is_file())
 
 
 if __name__ == "__main__":

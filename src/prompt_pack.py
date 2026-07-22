@@ -16,6 +16,9 @@ def load_transcript_files(txt_path: Path, json_path: Path) -> TranscriptResult |
             "start": segment.get("start", 0.0),
             "end": segment.get("end", 0.0),
             "text": segment.get("text", ""),
+            "avg_logprob": segment.get("avg_logprob"),
+            "no_speech_prob": segment.get("no_speech_prob"),
+            "compression_ratio": segment.get("compression_ratio"),
         }
         for segment in payload.get("segments", [])
         if segment.get("text", "").strip()
@@ -29,6 +32,21 @@ def load_transcript_files(txt_path: Path, json_path: Path) -> TranscriptResult |
                 start=float(segment["start"]),
                 end=float(segment["end"]),
                 text=str(segment["text"]),
+                avg_logprob=(
+                    float(segment["avg_logprob"])
+                    if segment.get("avg_logprob") is not None
+                    else None
+                ),
+                no_speech_prob=(
+                    float(segment["no_speech_prob"])
+                    if segment.get("no_speech_prob") is not None
+                    else None
+                ),
+                compression_ratio=(
+                    float(segment["compression_ratio"])
+                    if segment.get("compression_ratio") is not None
+                    else None
+                ),
             )
             for segment in segments
         ],
@@ -45,7 +63,14 @@ def write_transcript_files(transcript: TranscriptResult, out_dir: Path) -> tuple
     payload = {
         "language": transcript.language,
         "segments": [
-            {"start": segment.start, "end": segment.end, "text": segment.text}
+            {
+                "start": segment.start,
+                "end": segment.end,
+                "text": segment.text,
+                "avg_logprob": segment.avg_logprob,
+                "no_speech_prob": segment.no_speech_prob,
+                "compression_ratio": segment.compression_ratio,
+            }
             for segment in transcript.segments
         ],
     }
@@ -105,8 +130,17 @@ def write_metadata(
     metadata_path: Path,
     notes_model: str | None = None,
     notes_reasoning_effort: str | None = None,
+    visual_context_path: Path | None = None,
+    transcription_settings: dict[str, object] | None = None,
 ) -> None:
     metadata_path.parent.mkdir(parents=True, exist_ok=True)
+
+    visual_context = None
+    if visual_context_path is not None and visual_context_path.is_file():
+        try:
+            visual_context = json.loads(visual_context_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            visual_context = None
 
     payload = {
         "lecture_id": artifacts.lecture_id,
@@ -125,6 +159,8 @@ def write_metadata(
             if notes_model
             else None
         ),
+        "transcription": transcription_settings,
+        "visual_context": visual_context,
         "retrieval_matches": [
             {
                 "rank": i,

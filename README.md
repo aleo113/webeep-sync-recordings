@@ -3,10 +3,14 @@
 This project automates lecture note preparation with this pipeline:
 
 1. Download lecture recordings with [PoliWebex](https://github.com/sup3rgiu/PoliWebex)
-2. Transcribe recordings with `faster-whisper`
+2. Build a course glossary from the PDFs and transcribe recordings with
+   glossary hints, voice-activity detection, confidence scores, and optional
+   selective retranscription of uncertain regions
 3. Search a course-material folder recursively for `.pdf` files
 4. Extract each PDF page, run OCR when available, and semantically rank relevant pages against transcript content
-5. Generate ready-to-use Obsidian lecture notes with the locally authenticated
+5. Select a small set of sharp, visually novel video frames for blackboard work
+   and demonstrations not represented by the PDFs
+6. Generate ready-to-use Obsidian lecture notes with the locally authenticated
    Codex CLI, inline slide images, MathJax formulas, course-material links, and
    JSON retrieval evidence. Transcript-only and manual prompt-pack modes remain available.
 
@@ -67,6 +71,37 @@ If Node/aria2c are installed but not visible in non-interactive shells, set:
 
 ## Usage
 
+### Library and GUI integration
+
+Transcriber is an installable Python package as well as a CLI. During local GUI
+development, install it as an editable dependency:
+
+```bash
+.venv/bin/python -m pip install --no-build-isolation -e .
+```
+
+The stable public API accepts media that has already been downloaded:
+
+```python
+from pathlib import Path
+from transcriber import ProcessOptions, process_media
+
+artifacts = process_media(
+    Path("/path/to/lecture.mp4"),
+    ProcessOptions(
+        workspace_root=Path("/path/to/intermediates"),
+        output_root=Path("/path/to/notes"),
+        notes_mode="transcript-only",
+    ),
+)
+```
+
+`transcriber-worker` exposes the same API using JSON Lines over stdin/stdout for
+desktop applications. It reports structured progress, completion artifacts, and
+stable error codes. Downloading remains a CLI concern for `run_pipeline`; GUI
+integrations should download with their authenticated host session and call
+`process_media`.
+
 Run with one or more lecture URLs (fully non-interactive). The default mode
 generates Obsidian notes:
 
@@ -95,6 +130,9 @@ python -m src.cli \
 ```
 
 `--urls` and `--urls-file` can be used together; duplicates are processed once.
+For batches, one upcoming recording is downloaded in the background while the
+current lecture is transcribed, visually analyzed, or sent to Codex. Whisper,
+frame analysis, and Codex generation themselves remain sequential.
 
 Interactive mode (asks for lecture URL(s), materials path, notes mode, and output folder after launch):
 
@@ -145,6 +183,15 @@ It will prompt:
 - `--urls-file recordings.txt`: read one recording URL per line
 - `--codex-model gpt-5.6-luna`: override the Codex model
 - `--codex-reasoning-effort high`: override reasoning effort
+- `--transcription-profile fast|balanced|accurate`: choose the accuracy/compute tradeoff
+- `--whisper-retry-model medium`: model used for uncertain regions or accurate mode
+- `--no-vad`: disable voice-activity filtering
+- `--whisper-max-retry-fraction 0.25`: bound selective retranscription work
+- `--no-video-frames`: disable lecture-video frame selection
+- `--video-frame-interval 60`: low-resolution probe interval in seconds
+- `--max-video-frames 8`: cap selected video-frame candidates
+- `--max-total-images 12`: hard combined slide/frame limit for Codex
+- `--no-prefetch-downloads`: restore fully serial batch downloading
 
 ## Outputs
 
@@ -153,7 +200,7 @@ the generated notes and one shared attachment folder. Preliminary files are
 always written to the repository's `artifacts/` directory, not to this folder:
 
 - `<readable lecture title>.md` Obsidian-ready lecture notes, all at the vault root
-- `assets/*.png` rendered slide pages shared by all notes
+- `assets/*.png` and `assets/*.jpg` slide pages and video frames shared by all notes
 
 All intermediate files are stored separately under the repository's `artifacts/`:
 
@@ -161,6 +208,8 @@ All intermediate files are stored separately under the repository's `artifacts/`
 - `artifacts/processed/<lecture_id>/transcript.txt` and `transcript.json`
 - `artifacts/prompt_packs/<lecture_id>.md` manual prompt packs
 - `artifacts/metadata/<lecture_id>.json` retrieval and artifact metadata
+- `artifacts/video_frames/<lecture_id>/...` cached selected recording frames
+- `artifacts/visuals/<lecture_id>/...` staged slides and visual-use manifest
 - `artifacts/logs/run.log` pipeline logs
 
 During Codex note generation, the terminal reports when Codex is invoked, when it
@@ -178,8 +227,21 @@ directory exclusively for preliminary files.
   selects a coherent primary slide deck, and keeps only strong supplementary matches.
 - PDF text layers are used directly; OCR runs for image-only or nearly empty pages
   when `tesseract` is installed.
+- The default `balanced` transcription profile uses `small` for the full lecture,
+  enables VAD, supplies terminology extracted from the course PDFs, and retries
+  only low-confidence regions with `medium`. Retry work is capped at 25% of the
+  recording and 15 minutes, whichever is smaller.
+- Whisper model instances are reused across batch recordings, and segment-level
+  confidence values are retained in `transcript.json`.
+- Whisper automatically uses CUDA with FP16 when a compatible GPU is available;
+  otherwise it uses CPU INT8. Set `WHISPER_DEVICE` and
+  `WHISPER_COMPUTE_TYPE` to override that choice.
 - Codex receives both extracted page text and the selected slide PNGs as native
-  image inputs, so diagrams, layout, and formulas are visible during note generation.
+  image inputs, together with selected timestamped video frames when available.
+- Video analysis uses one small grayscale probe per minute, at most 12 adaptive
+  refinements, and at most eight high-resolution exports. Only referenced images
+  are copied into the Obsidian `assets/` folder, and Codex receives no more than
+  12 combined slides and frames by default.
 - Generated notes use `$...$` and `$$...$$` MathJax delimiters, Obsidian image
   embeds, and file/page links back to the original PDFs.
 - The current pipeline transcribes recordings with local `faster-whisper` before

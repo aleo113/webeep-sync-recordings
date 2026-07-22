@@ -76,6 +76,36 @@ def parse_args() -> argparse.Namespace:
         help="Codex reasoning effort used for note generation (default: high).",
     )
     parser.add_argument(
+        "--video-frames",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable selective lecture-video frames in Codex notes (default: enabled).",
+    )
+    parser.add_argument(
+        "--video-frame-interval",
+        type=int,
+        default=None,
+        help="Seconds between low-resolution video probes (default: 60).",
+    )
+    parser.add_argument(
+        "--max-video-frames",
+        type=int,
+        default=None,
+        help="Maximum selected video-frame candidates per lecture (default: 8).",
+    )
+    parser.add_argument(
+        "--max-total-images",
+        type=int,
+        default=None,
+        help="Hard combined limit for slide and video images sent to Codex (default: 12).",
+    )
+    parser.add_argument(
+        "--prefetch-downloads",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Download one upcoming batch recording while processing the current one (default: enabled).",
+    )
+    parser.add_argument(
         "--no-skip-keyring",
         action="store_true",
         help="Use PoliWebex keyring storage (default skips keyring via -k).",
@@ -90,6 +120,29 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="Number of CPU cores to use for transcription. If omitted, uses the current environment settings.",
+    )
+    parser.add_argument(
+        "--transcription-profile",
+        choices=["fast", "balanced", "accurate"],
+        default=None,
+        help="Transcription strategy (default: balanced).",
+    )
+    parser.add_argument(
+        "--whisper-retry-model",
+        default=None,
+        help="Model used for uncertain regions or the accurate profile (default: medium).",
+    )
+    parser.add_argument(
+        "--vad",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable voice-activity filtering during transcription (default: enabled).",
+    )
+    parser.add_argument(
+        "--whisper-max-retry-fraction",
+        type=float,
+        default=None,
+        help="Maximum fraction of a lecture selectively retranscribed (default: 0.25).",
     )
     parser.add_argument(
         "--verbose",
@@ -203,6 +256,15 @@ def main() -> int:
             explicit_notes_mode=notes_mode,
             explicit_codex_model=args.codex_model,
             explicit_codex_reasoning_effort=args.codex_reasoning_effort,
+            explicit_video_frames_enabled=args.video_frames,
+            explicit_video_frame_interval_seconds=args.video_frame_interval,
+            explicit_max_video_frames=args.max_video_frames,
+            explicit_max_total_images=args.max_total_images,
+            explicit_prefetch_downloads=args.prefetch_downloads,
+            explicit_whisper_profile=args.transcription_profile,
+            explicit_whisper_retry_model=args.whisper_retry_model,
+            explicit_whisper_vad_filter=args.vad,
+            explicit_whisper_max_retry_fraction=args.whisper_max_retry_fraction,
         )
         artifacts = run_pipeline(
             urls=urls,

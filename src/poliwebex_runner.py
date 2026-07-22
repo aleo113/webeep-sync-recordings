@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
 import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -52,6 +54,7 @@ class PoliWebexRunner:
         output_dir: Path,
         retry_interval: int = 1,
         skip_keyring: bool = True,
+        cancel_event: threading.Event | None = None,
     ) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -108,12 +111,30 @@ class PoliWebexRunner:
         if run_on_host:
             LOGGER.info("Running PoliWebex on host via flatpak-spawn for GUI login")
         LOGGER.info("Downloading lecture with PoliWebex: %s", url)
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=str(self.repo_path),
-            check=False,
             env=env,
+            start_new_session=cancel_event is not None,
         )
+
+        while proc.poll() is None:
+            if cancel_event is not None and cancel_event.wait(0.5):
+                try:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    proc.wait()
+                raise RuntimeError(f"Download cancelled for URL: {url}")
+            if cancel_event is None:
+                proc.wait()
 
         if proc.returncode != 0:
             raise RuntimeError(
