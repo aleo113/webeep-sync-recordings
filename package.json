@@ -2,6 +2,7 @@
   "name": "webeep-sync-recordings",
   "productName": "WeBeep Sync Recordings",
   "version": "1.0.0",
+  "packageManager": "pnpm@10.34.5",
   "description": "keep your webeep files and recordings synced",
   "repository": {
     "type": "git",
