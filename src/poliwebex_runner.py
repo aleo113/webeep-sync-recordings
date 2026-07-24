@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import signal
 import shutil
 import subprocess
@@ -116,7 +117,31 @@ class PoliWebexRunner:
             cwd=str(self.repo_path),
             env=env,
             start_new_session=cancel_event is not None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
         )
+
+        output_tail: list[str] = []
+
+        def drain_output() -> None:
+            if proc.stdout is None:
+                return
+            for line in proc.stdout:
+                cleaned = _strip_terminal_codes(line).strip()
+                if not cleaned:
+                    continue
+                LOGGER.info("PoliWebex: %s", cleaned)
+                output_tail.append(cleaned)
+                del output_tail[:-40]
+
+        output_thread = threading.Thread(
+            target=drain_output,
+            name="poliwebex-output",
+            daemon=True,
+        )
+        output_thread.start()
 
         while proc.poll() is None:
             if cancel_event is not None and cancel_event.wait(0.5):
@@ -136,10 +161,19 @@ class PoliWebexRunner:
             if cancel_event is None:
                 proc.wait()
 
+        output_thread.join(timeout=2)
+        if proc.stdout is not None:
+            proc.stdout.close()
         if proc.returncode != 0:
+            useful_output = [
+                line
+                for line in output_tail
+                if "Project powered by" not in line and not line.startswith("Features:")
+            ]
+            details = useful_output[-1] if useful_output else "See application logs for details."
             raise RuntimeError(
                 "PoliWebex failed for URL: "
-                f"{url}\nSee terminal output above for details."
+                f"{url}\n{details}"
             )
 
         media_file = self._latest_media_after(output_dir, started_at)
@@ -259,3 +293,7 @@ class PoliWebexRunner:
             return False
 
         return shutil.which("flatpak-spawn") is not None
+
+
+def _strip_terminal_codes(value: str) -> str:
+    return re.sub(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", value)
