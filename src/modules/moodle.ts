@@ -282,12 +282,14 @@ export class MoodleClient extends EventEmitter {
    * @returns A promise which resolves with the list of the enrolled courses
    */
   getCourses(): Course[] {
-    if (!this.waitingForCourses) {
+    if (loginManager.isLogged && !this.waitingForCourses) {
       // if not already waiting for the api resposne, make the call and retrieve updated courses
       this.waitingForCourses = true
-      this.getCoursesWithoutCache(true).then(() => {
-        this.waitingForCourses = false
-      })
+      this.getCoursesWithoutCache(true)
+        .catch(err => debug(`Unable to refresh courses: ${String(err)}`))
+        .finally(() => {
+          this.waitingForCourses = false
+        })
     }
     return this.cachedCourses
   }

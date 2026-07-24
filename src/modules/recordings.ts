@@ -232,9 +232,15 @@ function extractCandidateUrlsFromHtml(html: string, baseUrl: string): string[] {
   return Array.from(urls)
 }
 
+interface RecManRecordingCandidate {
+  webexUrl: string
+  title?: string
+  dateText?: string
+}
+
 export async function extractWebExUrlsFromRecMan(
   recmanUrl: string,
-): Promise<string[]> {
+): Promise<RecManRecordingCandidate[]> {
   log(`extractWebExUrlsFromRecMan start for: ${recmanUrl}`)
   try {
     const pageDebug = await recordingBrowser.executeScript(`
@@ -274,17 +280,35 @@ export async function extractWebExUrlsFromRecMan(
     const htmlUrls = html ? extractCandidateUrlsFromHtml(html, recmanUrl) : []
     log(`extractWebExUrlsFromRecMan fetched html candidates=${htmlUrls.length}`)
 
-    let recordingUrls: string[] = []
+    let recordingUrls: Array<{
+      href: string
+      title?: string
+      dateText?: string
+    }> = []
     try {
       recordingUrls = await recordingBrowser.executeScript(`
         return Array.from(document.querySelectorAll('a[href], area[href]'))
-          .map(element => element.href)
-          .filter(href =>
-            href.includes('webex.com') ||
-            href.includes('evn_preview_link') ||
-            href.includes('preview_link') ||
-            href.includes('transfer_id=') ||
-            href.includes('recording')
+          .map(element => {
+            const href = element.href || '';
+            const row = element.closest('tr');
+            const cells = row
+              ? Array.from(row.querySelectorAll('td'))
+                  .map(cell => (cell.textContent || '').replace(/\\s+/g, ' ').trim())
+                  .filter(Boolean)
+              : [];
+            const dateText = cells.find(text => /\\d{1,2}[\\/-]\\d{1,2}[\\/-]\\d{2,4}/.test(text));
+            const generic = /^(video|webex|link|apri|open|vedi|visualizza|download|registrazione)$/i;
+            const title = cells
+              .filter(text => text !== dateText && !generic.test(text) && text.length > 3)
+              .sort((a, b) => b.length - a.length)[0];
+            return { href, title, dateText };
+          })
+          .filter(item =>
+            item.href.includes('webex.com') ||
+            item.href.includes('evn_preview_link') ||
+            item.href.includes('preview_link') ||
+            item.href.includes('transfer_id=') ||
+            item.href.includes('recording')
           );
       `)
     } catch (e) {
@@ -293,9 +317,17 @@ export async function extractWebExUrlsFromRecMan(
       )
     }
 
-    const combinedUrls = Array.from(
-      new Set([...(recordingUrls || []), ...htmlUrls]),
-    )
+    const combinedByUrl = new Map<
+      string,
+      { href: string; title?: string; dateText?: string }
+    >()
+    for (const candidate of recordingUrls || []) {
+      combinedByUrl.set(candidate.href, candidate)
+    }
+    for (const href of htmlUrls) {
+      if (!combinedByUrl.has(href)) combinedByUrl.set(href, { href })
+    }
+    const combinedUrls = Array.from(combinedByUrl.values())
     log(
       `RecMan candidate URL counts: dom=${recordingUrls?.length || 0}, html=${htmlUrls.length}, combined=${combinedUrls.length}`,
     )
@@ -325,15 +357,20 @@ export async function extractWebExUrlsFromRecMan(
       return []
     }
 
-    const webexUrls: string[] = []
     log(
       `extractWebExUrlsFromRecMan will attempt ${combinedUrls.length} candidate URLs`,
     )
 
-    for (const recUrl of combinedUrls) {
+    const webexUrls: RecManRecordingCandidate[] = []
+    for (const candidate of combinedUrls) {
+      const recUrl = candidate.href
       try {
         if (recUrl.includes("webex.com") && extractVideoID(recUrl)) {
-          webexUrls.push(await canonicalizeWebExUrl(recUrl))
+          webexUrls.push({
+            webexUrl: await canonicalizeWebExUrl(recUrl),
+            title: candidate.title,
+            dateText: candidate.dateText,
+          })
           continue
         }
         await recordingBrowser.navigateAndWait(recUrl)
@@ -346,18 +383,22 @@ export async function extractWebExUrlsFromRecMan(
         `)
 
         if (webexUrl && webexUrl.includes("webex.com")) {
-          webexUrls.push(webexUrl)
+          webexUrls.push({
+            webexUrl,
+            title: candidate.title,
+            dateText: candidate.dateText,
+          })
         }
       } catch (e) {
         debug(`Failed to extract WebEx URL from ${recUrl}:`, e)
       }
     }
 
-    const uniqueByRecordingId = new Map<string, string>()
-    for (const webexUrl of webexUrls) {
-      const recordingId = extractVideoID(webexUrl)
+    const uniqueByRecordingId = new Map<string, RecManRecordingCandidate>()
+    for (const candidate of webexUrls) {
+      const recordingId = extractVideoID(candidate.webexUrl)
       if (recordingId && !uniqueByRecordingId.has(recordingId)) {
-        uniqueByRecordingId.set(recordingId, webexUrl)
+        uniqueByRecordingId.set(recordingId, candidate)
       }
     }
     return Array.from(uniqueByRecordingId.values())
@@ -444,16 +485,19 @@ export async function extractLectureMetadataFromArchive(
         `extractWebExUrlsFromRecMan returned ${Array.isArray(webexUrls) ? webexUrls.length : "non-array"}`,
       )
       const recordings: WebExRecording[] = []
-      for (const webexUrl of webexUrls) {
+      for (const candidate of webexUrls) {
+        const { webexUrl } = candidate
         const recordingId = extractVideoID(webexUrl)
         if (!recordingId) continue
 
-        let title = `Recording ${recordingId}`
-        const date = new Date()
+        let title = candidate.title || `Recording ${recordingId}`
+        const date = parseLectureDate(candidate.dateText || null)
         try {
-          const streamInfo = await getWebExStreamInfo(webexUrl)
-          if (streamInfo) {
-            title = streamInfo.title
+          if (!candidate.title) {
+            const streamInfo = await getWebExStreamInfo(webexUrl)
+            if (streamInfo) {
+              title = streamInfo.title
+            }
           }
         } catch (e) {
           debug(`Could not get stream info for ${webexUrl}:`, e)
@@ -656,11 +700,14 @@ export async function checkForNewRecordings(): Promise<RecordingDiscoveryResult>
 
       for (const module of modules) {
         activitiesChecked++
-        const webexUrls: string[] = []
+        const webexUrls: RecManRecordingCandidate[] = []
         let archiveUrl: string | undefined
         try {
           if (module.url.includes("webex.com") && extractVideoID(module.url)) {
-            webexUrls.push(await canonicalizeWebExUrl(module.url))
+            webexUrls.push({
+              webexUrl: await canonicalizeWebExUrl(module.url),
+              title: module.name.trim() || undefined,
+            })
           } else {
             await recordingBrowser.navigateAndWait(module.url)
             await new Promise(resolve => setTimeout(resolve, 750))
@@ -675,7 +722,10 @@ export async function checkForNewRecordings(): Promise<RecordingDiscoveryResult>
               String(resolvedUrl).includes("getservizio.xml")
 
             if (String(resolvedUrl).includes("webex.com")) {
-              webexUrls.push(String(resolvedUrl))
+              webexUrls.push({
+                webexUrl: String(resolvedUrl),
+                title: module.name.trim() || undefined,
+              })
             } else if (looksLikeArchive) {
               archiveUrl = String(resolvedUrl)
               webexUrls.push(...(await extractWebExUrlsFromRecMan(archiveUrl)))
@@ -699,14 +749,27 @@ export async function checkForNewRecordings(): Promise<RecordingDiscoveryResult>
           continue
         }
 
-        for (const webexUrl of webexUrls) {
+        for (const candidate of webexUrls) {
+          const { webexUrl } = candidate
           const recordingId = extractVideoID(webexUrl)
           if (!recordingId) continue
 
-          let title = `Recording ${recordingId}`
+          const moduleTitle = module.name.trim()
+          const normalizedModuleTitle = moduleTitle.toLowerCase()
+          const genericModuleTitle =
+            normalizedModuleTitle.includes("archivio registrazioni") ||
+            normalizedModuleTitle.includes("recordings archive") ||
+            normalizedModuleTitle === "saved recordings archive"
+          let title =
+            candidate.title ||
+            (genericModuleTitle
+              ? `Recording ${recordingId}`
+              : moduleTitle || `Recording ${recordingId}`)
           try {
-            const streamInfo = await getWebExStreamInfo(webexUrl)
-            if (streamInfo) title = streamInfo.title
+            if (!candidate.title) {
+              const streamInfo = await getWebExStreamInfo(webexUrl)
+              if (streamInfo) title = streamInfo.title
+            }
           } catch (e) {
             debug(`Could not get title for ${recordingId}:`, e)
           }
@@ -718,7 +781,7 @@ export async function checkForNewRecordings(): Promise<RecordingDiscoveryResult>
             recmanUrl: archiveUrl,
             sourceModuleId: module.id,
             sourceUrl: module.url,
-            date: new Date(),
+            date: parseLectureDate(candidate.dateText || null),
             courseId: course.id,
             courseName: course.name,
             downloaded: false,

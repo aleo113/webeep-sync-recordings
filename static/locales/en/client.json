@@ -103,6 +103,19 @@
   },
   "recordings": {
     "title": "Recordings",
+    "description": "Download and transcribe lectures from your selected courses",
+    "recordingCount_one": "{{count}} recording",
+    "recordingCount_other": "{{count}} recordings",
+    "courseCount_one": "{{count}} lecture",
+    "courseCount_other": "{{count}} lectures",
+    "batch": {
+      "ready": "Ready",
+      "checking": "Checking for updates",
+      "downloading_one": "{{count}} download active",
+      "downloading_other": "{{count}} downloads active",
+      "transcribing_one": "{{count}} transcription active",
+      "transcribing_other": "{{count}} transcriptions active"
+    },
     "syncNow": "Check now",
     "syncing": "Checking...",
     "loading": "Loading...",
@@ -116,6 +129,11 @@
     ,"downloadSelected": "Download selected"
     ,"transcribeSelected": "Transcribe selected"
     ,"cancel": "Cancel"
+    ,"selectHint": "Select one or more lectures"
+    ,"selectAll": "Select all"
+    ,"deselectAll": "Deselect all"
+    ,"selectedCount_one": "{{count}} lecture selected"
+    ,"selectedCount_other": "{{count}} lectures selected"
     ,"discoverySummary": "Checked {{activities}} link activities in {{courses}} courses; found {{recordings}} recordings."
     ,"status": {
       "available": "Available",

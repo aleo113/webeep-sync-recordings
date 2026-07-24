@@ -8,6 +8,9 @@ const { log, debug } = createLogger("LoginManager")
 
 /** @file the path to the token file which stores the encrypted token */
 const tokenPath = path.join(app.getPath("userData"), "token")
+const tokenLaunchUrl =
+  "https://webeep.polimi.it/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=12345"
+const loginEntryUrl = "https://webeep.polimi.it/auth/shibboleth/index.php"
 
 declare interface LoginManager {
   on(eventName: "ready", handler: () => void): this
@@ -23,6 +26,7 @@ class LoginManager extends EventEmitter {
   isLogged = false
 
   loginWindow?: BrowserWindow
+  private loginPromise?: Promise<boolean>
 
   private completeLogin(token: string) {
     this.isLogged = true
@@ -74,7 +78,10 @@ class LoginManager extends EventEmitter {
         this.isLogged = true
       })
       .catch(() => log("token not found"))
-      .finally(() => this.emit("ready"))
+      .finally(() => {
+        this.ready = true
+        this.emit("ready")
+      })
 
     app.once("ready", () => {
       session.defaultSession.webRequest.onBeforeRequest(
@@ -85,8 +92,7 @@ class LoginManager extends EventEmitter {
           // when the /my/ page is reached, login is completed, redirect to obtain token
           debug("Reached /my/ page, redirecting to moodle mobile token")
           cb({
-            redirectURL:
-              "https://webeep.polimi.it/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=12345",
+            redirectURL: tokenLaunchUrl,
           })
         },
       )
@@ -137,13 +143,21 @@ class LoginManager extends EventEmitter {
    * gets closed without the login process completing
    */
   createLoginWindow(): Promise<boolean> {
+    if (this.loginPromise) return this.loginPromise
+    this.loginPromise = this.runLoginFlow().finally(() => {
+      this.loginPromise = undefined
+    })
+    return this.loginPromise
+  }
+
+  private runLoginFlow(): Promise<boolean> {
     return new Promise(resolve => {
       if (!this.loginWindow) {
         debug("Creating Login Window...")
-        // create the window if it doesn't exist
         this.loginWindow = new BrowserWindow({
           height: 600,
           width: 1000,
+          show: false,
           autoHideMenuBar: true,
           frame: true,
           parent: BrowserWindow.getAllWindows()[0],
@@ -151,16 +165,45 @@ class LoginManager extends EventEmitter {
             webSecurity: false,
           },
         })
-        // load the login entry point of WeBeep
-        this.loginWindow.loadURL(
-          "http://webeep.polimi.it/auth/shibboleth/index.php",
-        )
         this.loginWindow.once("closed", () => {
           this.loginWindow = undefined
         })
       } else this.loginWindow.focus() // if the window already exists, focus it
 
+      const revealForInteractiveLogin = (_event: unknown, url: string) => {
+        const normalized = url.toLowerCase()
+        const needsInteraction =
+          normalized.includes("/auth/shibboleth") ||
+          normalized.includes("aunicalogin.polimi.it") ||
+          normalized.includes("shibidp.polimi.it") ||
+          normalized.includes("idserver.servizicie.interno.gov.it") ||
+          normalized.includes("cie.polimi.it")
+        if (needsInteraction && !this.loginWindow?.isDestroyed()) {
+          debug(`Interactive authentication required at ${url}`)
+          this.loginWindow.show()
+        }
+      }
+
+      this.loginWindow.webContents.on(
+        "did-redirect-navigation",
+        revealForInteractiveLogin,
+      )
+      this.loginWindow.webContents.on("did-navigate", revealForInteractiveLogin)
+
+      const revealTimer = setTimeout(() => {
+        if (
+          !this.isLogged &&
+          this.loginWindow &&
+          !this.loginWindow.isDestroyed() &&
+          !this.loginWindow.isVisible()
+        ) {
+          debug("Silent refresh needs interaction; revealing login window")
+          this.loginWindow.show()
+        }
+      }, 2500)
+
       const timeout = setTimeout(async () => {
+        clearTimeout(revealTimer)
         log("Login process timed out")
         await this.logout()
         resolve(false)
@@ -168,6 +211,15 @@ class LoginManager extends EventEmitter {
 
       const onclose = async () => {
         clearTimeout(timeout)
+        clearTimeout(revealTimer)
+        this.loginWindow?.webContents.removeListener(
+          "did-redirect-navigation",
+          revealForInteractiveLogin,
+        )
+        this.loginWindow?.webContents.removeListener(
+          "did-navigate",
+          revealForInteractiveLogin,
+        )
         log("Login process aborted!")
         await this.logout()
         resolve(false)
@@ -176,7 +228,16 @@ class LoginManager extends EventEmitter {
       this.loginWindow.once("close", onclose)
       this.once("token", token => {
         clearTimeout(timeout)
+        clearTimeout(revealTimer)
         this.loginWindow?.removeListener("close", onclose)
+        this.loginWindow?.webContents.removeListener(
+          "did-redirect-navigation",
+          revealForInteractiveLogin,
+        )
+        this.loginWindow?.webContents.removeListener(
+          "did-navigate",
+          revealForInteractiveLogin,
+        )
         log("Login process completed!")
         resolve(true)
         if (safeStorage.isEncryptionAvailable()) {
@@ -189,6 +250,15 @@ class LoginManager extends EventEmitter {
           log(
             "Secure token storage is unavailable; login will remain in memory for this session only",
           )
+        }
+      })
+
+      debug("Attempting silent token refresh with the persisted web session")
+      this.loginWindow.loadURL(tokenLaunchUrl).catch(err => {
+        debug(`Silent token refresh failed: ${String(err)}`)
+        if (!this.loginWindow?.isDestroyed()) {
+          this.loginWindow.show()
+          void this.loginWindow.loadURL(loginEntryUrl)
         }
       })
     })

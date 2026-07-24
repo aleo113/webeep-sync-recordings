@@ -1179,19 +1179,74 @@ $modal-anim-time: 0.15s;
 }
 
 .recordings-view {
+  padding: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+
   .recordings-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
-    h2 {
-      margin: 0;
+    gap: 16px;
+    padding: 2px 2px 12px;
+    border-bottom: 1px solid $very-light-gray;
+
+    .recordings-heading > span {
+      display: block;
+      margin-top: 2px;
+      font-size: 0.85em;
+      opacity: 0.7;
+    }
+
+    .recordings-title-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 7px;
+
+      h3 {
+        margin: 0;
+      }
+
+      .recordings-count,
+      .batch-state {
+        padding: 2px 7px;
+        border-radius: 9px;
+        font-size: 0.72em;
+        font-weight: bold;
+        background-color: $very-light-gray;
+      }
+
+      .batch-state {
+        color: $positive;
+        background-color: rgba($positive, 0.12);
+
+        &.busy {
+          color: $system-blue;
+          background-color: rgba($system-blue, 0.1);
+        }
+      }
     }
   }
+
   .sync-button {
     display: flex;
+    flex-direction: row;
     align-items: center;
     gap: 6px;
+    min-width: auto;
+    color: $bright;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+
+    svg {
+      width: 20px;
+      height: 20px;
+    }
+
     &.syncing {
       opacity: 0.7;
       .spin {
@@ -1199,10 +1254,50 @@ $modal-anim-time: 0.15s;
       }
     }
   }
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+
+  .recordings-toolbar {
+    min-height: 36px;
+    padding: 10px 2px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+
+    .selection-count {
+      font-size: 0.82em;
+      opacity: 0.65;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .confirm-button {
+      margin: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+
+      &:disabled {
+        cursor: default;
+        filter: grayscale(0.5);
+        opacity: 0.45;
+        box-shadow: none;
+      }
+    }
   }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   .recordings-empty {
     display: flex;
     flex-direction: column;
@@ -1213,37 +1308,162 @@ $modal-anim-time: 0.15s;
     color: #888;
     gap: 16px;
   }
+
   .recordings-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    overflow: hidden auto;
+    margin: 0 -2px -2px;
+    padding: 0 2px 2px;
   }
-  .recording-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px;
-    border-radius: 8px;
-    background-color: $very-light-gray;
-    @media (prefers-color-scheme: dark) {
-      background-color: $almost-black;
+
+  .recordings-course-group {
+    &:not(:last-child) {
+      margin-bottom: 8px;
     }
+
+    .recordings-course-header {
+      width: 100%;
+      min-height: 34px;
+      padding: 4px 6px;
+      border-radius: 8px;
+      background-color: $almost-white;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+
+      .course-collapse-button {
+        min-width: 0;
+        flex: 1;
+        padding: 2px;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        display: grid;
+        grid-template-columns: 18px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 6px;
+        text-align: left;
+        cursor: pointer;
+        font-family: "Poppins", sans-serif;
+        font-weight: bold;
+      }
+
+      svg {
+        width: 16px;
+        height: 16px;
+        color: $bright;
+      }
+
+      .course-recording-count {
+        font-family: "Lato", sans-serif;
+        font-size: 0.75em;
+        font-weight: normal;
+        opacity: 0.65;
+      }
+
+      .course-select-button {
+        flex: none;
+        border: 0;
+        background: transparent;
+        padding: 4px 6px;
+        font-family: inherit;
+        font-size: 0.78em;
+      }
+    }
+  }
+
+  .recording-item {
+    position: relative;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    min-height: 52px;
+    padding: 10px 8px;
+
+    &:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      left: 46px;
+      right: 8px;
+      bottom: 0;
+      border-bottom: 1px solid $very-light-gray;
+    }
+
+    &:hover {
+      background-color: $almost-white;
+      border-radius: 8px;
+    }
+
+    .checkbox {
+      height: 24px;
+      background: transparent !important;
+    }
+
     .recording-info {
+      min-width: 0;
       display: flex;
       flex-direction: column;
       gap: 4px;
-      .recording-course {
+
+      .recording-title {
         font-weight: bold;
         font-family: "Poppins", sans-serif;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
-      .recording-date {
-        font-size: 0.85em;
+
+      .recording-meta {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        font-size: 0.8em;
         opacity: 0.7;
       }
+
+      .recording-status {
+        padding: 2px 6px;
+        border-radius: 8px;
+        background-color: $very-light-gray;
+
+        &.downloaded,
+        &.completed {
+          color: $positive;
+          background-color: rgba($positive, 0.12);
+        }
+
+        &.downloading,
+        &.transcribing {
+          color: $system-blue;
+          background-color: rgba($system-blue, 0.1);
+        }
+
+        &.error {
+          color: $danger;
+          background-color: $danger-less;
+        }
+      }
+
+      .progress-bar {
+        width: min(320px, 100%);
+        height: 4px;
+        margin: 2px 0 0;
+      }
+
+      .error-status {
+        color: $danger;
+        font-size: 0.8em;
+        white-space: pre-line;
+      }
     }
+
     .recording-actions {
       display: flex;
-      gap: 8px;
+      gap: 4px;
+
       .downloading-status {
         display: flex;
         align-items: center;
@@ -1253,20 +1473,23 @@ $modal-anim-time: 0.15s;
           animation: spin 1s linear infinite;
         }
       }
-      .error-status {
-        color: $danger;
-        font-size: 0.85em;
-      }
+
       .icon-button {
         background: none;
         border: none;
         cursor: pointer;
-        padding: 4px;
-        border-radius: 4px;
+        padding: 5px;
+        border-radius: 6px;
         display: flex;
         align-items: center;
         justify-content: center;
         color: $bright;
+
+        svg {
+          width: 20px;
+          height: 20px;
+        }
+
         &:hover {
           background-color: $bright-less;
         }
@@ -1277,6 +1500,22 @@ $modal-anim-time: 0.15s;
           }
         }
       }
+    }
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .recordings-header,
+    .recording-item:not(:last-child)::after {
+      border-color: $very-dark-gray;
+    }
+
+    .recording-item:hover {
+      background-color: $almost-black;
+    }
+
+    .recordings-course-header,
+    .recording-status {
+      background-color: $very-dark-gray !important;
     }
   }
 }

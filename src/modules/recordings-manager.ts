@@ -21,6 +21,20 @@ import { transcriberWorker, TranscriberWorkerEvent } from "./transcriber-worker"
 
 const { log, error } = createLogger("RecordingsManager")
 
+function isFallbackRecordingTitle(title: string, recordingId: string): boolean {
+  const normalized = title.trim().toLowerCase()
+  return (
+    !normalized ||
+    normalized === recordingId.toLowerCase() ||
+    normalized === `recording ${recordingId}`.toLowerCase()
+  )
+}
+
+function titleFromMediaPath(filePath: string): string | null {
+  const title = path.parse(filePath).name.trim()
+  return title && !/^[a-f0-9]{32}$/i.test(title) ? title : null
+}
+
 export class RecordingsManager extends EventEmitter {
   private syncing = false
   private interval: NodeJS.Timeout | null = null
@@ -84,6 +98,15 @@ export class RecordingsManager extends EventEmitter {
       for (const recording of discovered) {
         const existing = catalog[recording.recordingId]
         if (existing) {
+          if (
+            isFallbackRecordingTitle(recording.title, recording.recordingId) &&
+            !isFallbackRecordingTitle(
+              existing.recording.title,
+              recording.recordingId,
+            )
+          ) {
+            recording.title = existing.recording.title
+          }
           existing.recording = recording
           continue
         }
@@ -127,7 +150,20 @@ export class RecordingsManager extends EventEmitter {
     if (!store.data.persistence.recordingCatalog) {
       store.data.persistence.recordingCatalog = {}
     }
-    return store.data.persistence.recordingCatalog
+    const catalog = store.data.persistence.recordingCatalog
+    for (const item of Object.values(catalog)) {
+      if (
+        item.filePath &&
+        isFallbackRecordingTitle(
+          item.recording.title,
+          item.recording.recordingId,
+        )
+      ) {
+        item.recording.title =
+          titleFromMediaPath(item.filePath) || item.recording.title
+      }
+    }
+    return catalog
   }
 
   async downloadSelected(recordingIds: string[]): Promise<void> {
@@ -163,6 +199,9 @@ export class RecordingsManager extends EventEmitter {
         item.progress = fraction
         this.emitItem(item)
       })
+      if (isFallbackRecordingTitle(recording.title, recording.recordingId)) {
+        recording.title = titleFromMediaPath(filePath) || recording.title
+      }
       item.status = "downloaded"
       item.filePath = filePath
       item.progress = 1

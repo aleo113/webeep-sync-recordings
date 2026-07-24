@@ -2,6 +2,8 @@ import { ipcRenderer } from "electron"
 import React, { FC, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import {
+  IoChevronDown,
+  IoChevronForward,
   IoCloudDownload,
   IoDocumentText,
   IoPlayCircle,
@@ -10,6 +12,7 @@ import {
   IoTrashBin,
 } from "react-icons/io5"
 import { RecordingCatalogItem } from "../../modules/recordings-types"
+import { Checkbox } from "../components/Checkbox"
 
 export const RecordingsView: FC = () => {
   const { t } = useTranslation("client", { keyPrefix: "recordings" })
@@ -19,6 +22,9 @@ export const RecordingsView: FC = () => {
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [collapsedCourses, setCollapsedCourses] = useState<
+    Record<string, boolean>
+  >({})
   const [operationError, setOperationError] = useState("")
   const [discoveryMessage, setDiscoveryMessage] = useState("")
 
@@ -93,8 +99,38 @@ export const RecordingsView: FC = () => {
   }
 
   const items = Object.values(catalog).sort(
-    (a, b) => b.discoveredAt - a.discoveredAt,
+    (a, b) =>
+      a.recording.courseName.localeCompare(b.recording.courseName) ||
+      new Date(b.recording.date).getTime() -
+        new Date(a.recording.date).getTime(),
   )
+  const courseGroups = items.reduce<
+    Array<{ courseName: string; items: RecordingCatalogItem[] }>
+  >((groups, item) => {
+    const previous = groups[groups.length - 1]
+    if (previous?.courseName === item.recording.courseName) {
+      previous.items.push(item)
+    } else {
+      groups.push({
+        courseName: item.recording.courseName,
+        items: [item],
+      })
+    }
+    return groups
+  }, [])
+  const downloadingCount = items.filter(
+    item => item.status === "downloading",
+  ).length
+  const transcribingCount = items.filter(
+    item => item.status === "transcribing",
+  ).length
+  const batchState = syncing
+    ? t("batch.checking")
+    : downloadingCount
+      ? t("batch.downloading", { count: downloadingCount })
+      : transcribingCount
+        ? t("batch.transcribing", { count: transcribingCount })
+        : t("batch.ready")
   if (loading) {
     return (
       <div className="recordings-view section">
@@ -106,9 +142,24 @@ export const RecordingsView: FC = () => {
   return (
     <div className="recordings-view section">
       <div className="recordings-header">
-        <h2>{t("title")}</h2>
+        <div className="recordings-heading">
+          <div className="recordings-title-row">
+            <h3>{t("title")}</h3>
+            <span className="recordings-count">
+              {t("recordingCount", { count: items.length })}
+            </span>
+            <span
+              className={`batch-state ${
+                syncing || downloadingCount || transcribingCount ? "busy" : ""
+              }`}
+            >
+              {batchState}
+            </span>
+          </div>
+          <span>{t("description")}</span>
+        </div>
         <button
-          className={`sync-button ${syncing ? "syncing" : ""}`}
+          className={`sync-button clickable ${syncing ? "syncing" : ""}`}
           onClick={() => invoke("recordings:sync-now")}
           disabled={syncing}
         >
@@ -117,21 +168,28 @@ export const RecordingsView: FC = () => {
         </button>
       </div>
 
-      <div className="button-row">
-        <button
-          className="confirm-button"
-          disabled={!selectedIds.length}
-          onClick={() => invoke("recordings:download", selectedIds)}
-        >
-          <IoCloudDownload /> {t("downloadSelected")}
-        </button>
-        <button
-          className="confirm-button"
-          disabled={!selectedIds.length}
-          onClick={() => invoke("recordings:transcribe", selectedIds)}
-        >
-          <IoDocumentText /> {t("transcribeSelected")}
-        </button>
+      <div className="recordings-toolbar">
+        <span className="selection-count">
+          {selectedIds.length
+            ? t("selectedCount", { count: selectedIds.length })
+            : t("selectHint")}
+        </span>
+        <div className="button-row">
+          <button
+            className="confirm-button"
+            disabled={!selectedIds.length}
+            onClick={() => invoke("recordings:download", selectedIds)}
+          >
+            <IoCloudDownload /> {t("downloadSelected")}
+          </button>
+          <button
+            className="confirm-button"
+            disabled={!selectedIds.length}
+            onClick={() => invoke("recordings:transcribe", selectedIds)}
+          >
+            <IoDocumentText /> {t("transcribeSelected")}
+          </button>
+        </div>
       </div>
 
       {operationError ? (
@@ -147,65 +205,133 @@ export const RecordingsView: FC = () => {
         </div>
       ) : (
         <div className="recordings-list">
-          {items.map(item => {
-            const recordingId = item.recording.recordingId
-            const busy =
-              item.status === "downloading" || item.status === "transcribing"
+          {courseGroups.map(group => {
+            const collapsed = !!collapsedCourses[group.courseName]
+            const groupIds = group.items.map(item => item.recording.recordingId)
+            const allSelected = groupIds.every(id => selected[id])
             return (
-              <div key={recordingId} className="recording-item">
-                <input
-                  type="checkbox"
-                  checked={!!selected[recordingId]}
-                  onChange={() =>
-                    setSelected(previous => ({
-                      ...previous,
-                      [recordingId]: !previous[recordingId],
-                    }))
-                  }
-                />
-                <div className="recording-info">
-                  <span className="recording-course">
-                    {item.recording.title}
-                  </span>
-                  <span className="recording-date">
-                    {item.recording.courseName} · {t(`status.${item.status}`)}
-                    {typeof item.progress === "number"
-                      ? ` · ${Math.round(item.progress * 100)}%`
-                      : ""}
-                  </span>
-                  {item.error ? (
-                    <span className="error-status">{item.error}</span>
-                  ) : null}
+              <div className="recordings-course-group" key={group.courseName}>
+                <div className="recordings-course-header">
+                  <button
+                    className="course-collapse-button"
+                    onClick={() =>
+                      setCollapsedCourses(previous => ({
+                        ...previous,
+                        [group.courseName]: !previous[group.courseName],
+                      }))
+                    }
+                    aria-expanded={!collapsed}
+                  >
+                    {collapsed ? <IoChevronForward /> : <IoChevronDown />}
+                    <span>{group.courseName}</span>
+                    <span className="course-recording-count">
+                      {t("courseCount", { count: group.items.length })}
+                    </span>
+                  </button>
+                  <button
+                    className="course-select-button text-button"
+                    onClick={() =>
+                      setSelected(previous => {
+                        const next = { ...previous }
+                        for (const id of groupIds) next[id] = !allSelected
+                        return next
+                      })
+                    }
+                  >
+                    {allSelected ? t("deselectAll") : t("selectAll")}
+                  </button>
                 </div>
-                <div className="recording-actions">
-                  {busy ? (
-                    <button
-                      className="icon-button danger"
-                      title={t("cancel")}
-                      onClick={() => invoke("recordings:cancel", recordingId)}
-                    >
-                      <IoStopCircle />
-                    </button>
-                  ) : null}
-                  {item.filePath ? (
-                    <>
-                      <button
-                        className="icon-button"
-                        onClick={() => invoke("recordings:open", recordingId)}
-                        title={t("play")}
-                      >
-                        <IoPlayCircle />
-                      </button>
-                      <button
-                        className="icon-button danger"
-                        onClick={() => invoke("recordings:delete", recordingId)}
-                        title={t("delete")}
-                      >
-                        <IoTrashBin />
-                      </button>
-                    </>
-                  ) : null}
-                </div>
+                {!collapsed
+                  ? group.items.map(item => {
+                      const recordingId = item.recording.recordingId
+                      const busy =
+                        item.status === "downloading" ||
+                        item.status === "transcribing"
+                      return (
+                        <div key={recordingId} className="recording-item">
+                          <Checkbox
+                            value={!!selected[recordingId]}
+                            color="#30d896"
+                            onChange={() =>
+                              setSelected(previous => ({
+                                ...previous,
+                                [recordingId]: !previous[recordingId],
+                              }))
+                            }
+                          />
+                          <div className="recording-info">
+                            <span
+                              className="recording-title"
+                              title={item.recording.title}
+                            >
+                              {item.recording.title}
+                            </span>
+                            <div className="recording-meta">
+                              <span
+                                className={`recording-status ${item.status}`}
+                              >
+                                {t(`status.${item.status}`)}
+                                {typeof item.progress === "number"
+                                  ? ` · ${Math.round(item.progress * 100)}%`
+                                  : ""}
+                              </span>
+                            </div>
+                            {busy && typeof item.progress === "number" ? (
+                              <div className="progress-bar">
+                                <div
+                                  className="progress-bar-inside"
+                                  style={{
+                                    width: `${Math.max(
+                                      2,
+                                      item.progress * 100,
+                                    )}%`,
+                                  }}
+                                />
+                              </div>
+                            ) : null}
+                            {item.error ? (
+                              <span className="error-status">{item.error}</span>
+                            ) : null}
+                          </div>
+                          <div className="recording-actions">
+                            {busy ? (
+                              <button
+                                className="icon-button danger"
+                                title={t("cancel")}
+                                onClick={() =>
+                                  invoke("recordings:cancel", recordingId)
+                                }
+                              >
+                                <IoStopCircle />
+                              </button>
+                            ) : null}
+                            {item.filePath ? (
+                              <>
+                                <button
+                                  className="icon-button"
+                                  onClick={() =>
+                                    invoke("recordings:open", recordingId)
+                                  }
+                                  title={t("play")}
+                                >
+                                  <IoPlayCircle />
+                                </button>
+                                <button
+                                  className="icon-button danger"
+                                  onClick={() =>
+                                    invoke("recordings:delete", recordingId)
+                                  }
+                                  title={t("delete")}
+                                >
+                                  <IoTrashBin />
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                      )
+                    })
+                  : null}
               </div>
             )
           })}

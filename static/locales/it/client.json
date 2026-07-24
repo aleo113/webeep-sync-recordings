@@ -141,6 +141,19 @@
   },
   "recordings": {
     "title": "Registrazioni",
+    "description": "Scarica e trascrivi le lezioni dei corsi selezionati",
+    "recordingCount_one": "{{count}} registrazione",
+    "recordingCount_other": "{{count}} registrazioni",
+    "courseCount_one": "{{count}} lezione",
+    "courseCount_other": "{{count}} lezioni",
+    "batch": {
+      "ready": "Pronto",
+      "checking": "Ricerca aggiornamenti",
+      "downloading_one": "{{count}} download attivo",
+      "downloading_other": "{{count}} download attivi",
+      "transcribing_one": "{{count}} trascrizione attiva",
+      "transcribing_other": "{{count}} trascrizioni attive"
+    },
     "syncNow": "Verifica ora",
     "syncing": "Verifica in corso...",
     "loading": "Caricamento...",
@@ -154,6 +167,11 @@
     ,"downloadSelected": "Scarica selezionate"
     ,"transcribeSelected": "Trascrivi selezionate"
     ,"cancel": "Annulla"
+    ,"selectHint": "Seleziona una o più lezioni"
+    ,"selectAll": "Seleziona tutte"
+    ,"deselectAll": "Deseleziona tutte"
+    ,"selectedCount_one": "{{count}} lezione selezionata"
+    ,"selectedCount_other": "{{count}} lezioni selezionate"
     ,"discoverySummary": "Controllate {{activities}} attività link in {{courses}} corsi; trovate {{recordings}} registrazioni."
     ,"status": {
       "available": "Disponibile",
