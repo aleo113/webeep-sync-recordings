@@ -209,9 +209,13 @@ def _transcribe_once(
         kwargs["language"] = language
     else:
         kwargs["language_detection_segments"] = 3
+    # faster-whisper budgets hotwords independently from previous transcript
+    # tokens. Once both reach half of Whisper's 448-token context, the prompt can
+    # leave no room for decoding. Supplying the course vocabulary as the initial
+    # prompt instead keeps it on faster-whisper's bounded history path.
     if hotwords:
-        kwargs["hotwords"] = hotwords
-    if initial_prompt:
+        kwargs["initial_prompt"] = hotwords
+    elif initial_prompt:
         kwargs["initial_prompt"] = initial_prompt
 
     source_segments, info = model.transcribe(str(media_path), **kwargs)

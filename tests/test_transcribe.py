@@ -77,9 +77,26 @@ class TranscriptionTests(unittest.TestCase):
             )
         kwargs = model.transcribe.call_args.kwargs
         self.assertTrue(kwargs["vad_filter"])
-        self.assertEqual(kwargs["hotwords"], "ISTA, Proximal Mapping")
+        self.assertEqual(kwargs["initial_prompt"], "ISTA, Proximal Mapping")
+        self.assertNotIn("hotwords", kwargs)
         self.assertEqual(kwargs["language_detection_segments"], 3)
         self.assertEqual(result.segments[0].avg_logprob, -0.2)
+
+    def test_hotwords_use_the_bounded_initial_prompt_path(self) -> None:
+        model = Mock()
+        model.transcribe.return_value = (
+            [],
+            SimpleNamespace(duration=10.0, language="en"),
+        )
+        with tempfile.TemporaryDirectory() as directory, patch(
+            "src.transcribe._get_model", return_value=model
+        ):
+            media = Path(directory) / "lecture.mp4"
+            media.write_bytes(b"media")
+            transcribe_media(media, "small", hotwords="A" * 1200, profile="fast")
+        kwargs = model.transcribe.call_args.kwargs
+        self.assertEqual(kwargs["initial_prompt"], "A" * 1200)
+        self.assertNotIn("hotwords", kwargs)
 
     def test_balanced_profile_replaces_only_uncertain_regions(self) -> None:
         primary = Mock()
