@@ -298,49 +298,23 @@ export const SettingsModal: FC<{ onClose: () => void }> = props => {
                 }
               />
             </div>
+            <div className="setting">
+              <span>{t("recordingsStartCollapsed")}</span>
+              <Switch
+                onChange={v =>
+                  updateSettigns({
+                    ...settings,
+                    recordingsStartCollapsed: v,
+                  })
+                }
+                checked={settings.recordingsStartCollapsed}
+              />
+              <span className="desc">{t("recordingsStartCollapsed_desc")}</span>
+            </div>
           </div>
 
           <div className="setting-section">
             <h3>{t("transcriberSection")}</h3>
-            <div className="setting">
-              <span>{t("transcriberPythonPath")}</span>
-              <input
-                type="text"
-                value={settings.transcriberPythonPath}
-                onChange={e =>
-                  updateSettigns({
-                    ...settings,
-                    transcriberPythonPath: e.target.value,
-                  })
-                }
-              />
-            </div>
-            <div className="setting">
-              <span>{t("transcriberPoliwebexPath")}</span>
-              <input
-                type="text"
-                value={settings.transcriberPoliwebexPath}
-                onChange={e =>
-                  updateSettigns({
-                    ...settings,
-                    transcriberPoliwebexPath: e.target.value,
-                  })
-                }
-              />
-            </div>
-            <div className="setting">
-              <span>{t("transcriberMaterialsPath")}</span>
-              <input
-                type="text"
-                value={settings.transcriberMaterialsPath}
-                onChange={e =>
-                  updateSettigns({
-                    ...settings,
-                    transcriberMaterialsPath: e.target.value,
-                  })
-                }
-              />
-            </div>
             <div className="setting">
               <span>{t("transcriberOutputPath")}</span>
               <input
@@ -356,8 +330,7 @@ export const SettingsModal: FC<{ onClose: () => void }> = props => {
             </div>
             <div className="setting">
               <span>{t("transcriberWhisperModel")}</span>
-              <input
-                type="text"
+              <select
                 value={settings.transcriberWhisperModel}
                 onChange={e =>
                   updateSettigns({
@@ -365,7 +338,37 @@ export const SettingsModal: FC<{ onClose: () => void }> = props => {
                     transcriberWhisperModel: e.target.value,
                   })
                 }
+              >
+                <option value="tiny">tiny</option>
+                <option value="base">base</option>
+                <option value="small">small</option>
+                <option value="medium">medium</option>
+                <option value="large-v3">large-v3</option>
+                <option value="turbo">turbo</option>
+              </select>
+              <span className="desc">{t("transcriberWhisperModel_desc")}</span>
+            </div>
+            <div className="setting">
+              <span>{t("transcriberWhisperNumCores")}</span>
+              <input
+                type="number"
+                min={1}
+                max={64}
+                value={settings.transcriberWhisperNumCores}
+                onChange={e => {
+                  const parsed = Number.parseInt(e.target.value, 10)
+                  const value = Number.isFinite(parsed)
+                    ? Math.min(64, Math.max(1, parsed))
+                    : 2
+                  updateSettigns({
+                    ...settings,
+                    transcriberWhisperNumCores: value,
+                  })
+                }}
               />
+              <span className="desc">
+                {t("transcriberWhisperNumCores_desc")}
+              </span>
             </div>
             <div className="setting">
               <span>{t("transcriberNotesMode")}</span>

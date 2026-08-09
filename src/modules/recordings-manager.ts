@@ -26,7 +26,8 @@ function isFallbackRecordingTitle(title: string, recordingId: string): boolean {
   return (
     !normalized ||
     normalized === recordingId.toLowerCase() ||
-    normalized === `recording ${recordingId}`.toLowerCase()
+    normalized === `recording ${recordingId}`.toLowerCase() ||
+    /^\d+\s*(?:min|mins|minutes|minuti)$/i.test(normalized)
   )
 }
 
@@ -40,6 +41,8 @@ export class RecordingsManager extends EventEmitter {
   private interval: NodeJS.Timeout | null = null
   private currentDownloads = new Map<string, { cancel: () => void }>()
   private transcriptionJobs = new Map<string, string>()
+  private transcriptionQueue: string[] = []
+  private pumpingTranscriptions = false
 
   constructor() {
     super()
@@ -52,6 +55,7 @@ export class RecordingsManager extends EventEmitter {
 
   async startPolling(): Promise<void> {
     await storeIsReady()
+    await this.recoverInterruptedTranscriptions()
     this.restartPolling()
     if (store.data.settings.recordingsEnabled && loginManager.isLogged) {
       setTimeout(() => {
@@ -60,6 +64,21 @@ export class RecordingsManager extends EventEmitter {
         )
       }, 5000)
     }
+  }
+
+  private async recoverInterruptedTranscriptions(): Promise<void> {
+    const catalog = this.getCatalog()
+    let recovered = false
+    for (const item of Object.values(catalog)) {
+      if (!["queued", "transcribing"].includes(item.status)) continue
+      item.status = item.filePath ? "downloaded" : "available"
+      item.progress = undefined
+      item.error = "Transcription was interrupted. You can start it again."
+      recovered = true
+    }
+    if (!recovered) return
+    await store.write()
+    this.emit("catalog", catalog)
   }
 
   restartPolling(): void {
@@ -164,6 +183,56 @@ export class RecordingsManager extends EventEmitter {
       }
     }
     return catalog
+  }
+
+  async addManualRecording(webexUrl: string): Promise<RecordingCatalogItem> {
+    await storeIsReady()
+    const trimmedUrl = webexUrl.trim()
+    let parsedUrl: URL
+    try {
+      parsedUrl = new URL(trimmedUrl)
+    } catch {
+      throw new Error("Invalid recording link")
+    }
+    if (!parsedUrl.hostname.toLowerCase().endsWith("webex.com")) {
+      throw new Error("The link must be a WebEx recording link")
+    }
+
+    const recordingId =
+      parsedUrl.pathname
+        .split("/")
+        .map(part => part.slice(0, 32))
+        .find(part => /^[a-f0-9]{32}$/i.test(part)) ||
+      parsedUrl.searchParams.get("RCID") ||
+      parsedUrl.searchParams.get("rcid")
+    if (!recordingId) {
+      throw new Error("Could not identify a recording in this link")
+    }
+
+    const streamInfo = await getWebExStreamInfo(trimmedUrl)
+    const catalog = this.getCatalog()
+    const existing = catalog[recordingId]
+    const item: RecordingCatalogItem = {
+      recording: {
+        recordingId,
+        title:
+          streamInfo?.title ||
+          existing?.recording.title ||
+          `Recording ${recordingId}`,
+        webexUrl: trimmedUrl,
+        date: existing?.recording.date || new Date(),
+        courseId: existing?.recording.courseId || 0,
+        courseName: existing?.recording.courseName || "Manual recordings",
+        downloaded: Boolean(existing?.recording.downloaded),
+      },
+      discoveredAt: existing?.discoveredAt || Date.now(),
+      status: existing?.status || "available",
+      ...(existing?.filePath ? { filePath: existing.filePath } : {}),
+    }
+    catalog[recordingId] = item
+    await store.write()
+    this.emit("catalog", catalog)
+    return item
   }
 
   async downloadSelected(recordingIds: string[]): Promise<void> {
@@ -294,21 +363,76 @@ export class RecordingsManager extends EventEmitter {
       if (!item?.filePath || !["downloaded", "error"].includes(item.status)) {
         continue
       }
-      item.status = "transcribing"
+      item.status = "queued"
       item.error = undefined
-      item.progress = 0
-      const jobId = await transcriberWorker.start({
-        recordingId,
-        mediaPath: item.filePath,
-        sourceUrl: item.recording.webexUrl,
-      })
-      this.transcriptionJobs.set(jobId, recordingId)
+      item.progress = undefined
+      this.transcriptionQueue.push(recordingId)
       this.emitItem(item)
     }
     await store.write()
+    await this.pumpTranscriptionQueue()
+  }
+
+  private async pumpTranscriptionQueue(): Promise<void> {
+    if (this.pumpingTranscriptions) return
+    this.pumpingTranscriptions = true
+    try {
+      // Loading multiple Whisper models at once can exhaust system memory.
+      while (
+        this.transcriptionJobs.size === 0 &&
+        this.transcriptionQueue.length
+      ) {
+        const recordingId = this.transcriptionQueue.shift()
+        if (!recordingId) continue
+        const item = this.getCatalog()[recordingId]
+        if (!item?.filePath || item.status !== "queued") continue
+        try {
+          item.status = "transcribing"
+          item.progress = 0
+          await store.write()
+          this.emitItem(item)
+          await transcriberWorker.start({
+            recordingId,
+            mediaPath: item.filePath,
+            sourceUrl: item.recording.webexUrl,
+            materialsPath: path.join(
+              store.data.settings.downloadPath,
+              item.recording.courseName.replace(/[/\\?%*:;|"<>]/g, "-"),
+            ),
+            onJobId: id => this.transcriptionJobs.set(id, recordingId),
+          })
+        } catch (err) {
+          for (const [jobId, id] of Array.from(this.transcriptionJobs)) {
+            if (id === recordingId) this.transcriptionJobs.delete(jobId)
+          }
+          item.status = "error"
+          item.error = `Could not start transcription: ${String(err)}`
+          await store.write()
+          this.emitItem(item)
+        }
+      }
+    } finally {
+      this.pumpingTranscriptions = false
+      if (this.transcriptionJobs.size === 0 && this.transcriptionQueue.length) {
+        setImmediate(() => void this.pumpTranscriptionQueue())
+      }
+    }
   }
 
   cancelTranscription(recordingId: string): boolean {
+    const queuedIndex = this.transcriptionQueue.indexOf(recordingId)
+    if (queuedIndex !== -1) {
+      this.transcriptionQueue.splice(queuedIndex, 1)
+      const item = this.getCatalog()[recordingId]
+      if (item) {
+        item.status = item.filePath ? "downloaded" : "available"
+        item.progress = undefined
+        item.error = "Transcription cancelled."
+        void store.write()
+        this.emitItem(item)
+      }
+      return true
+    }
     const pair = Array.from(this.transcriptionJobs.entries()).find(
       ([, id]) => id === recordingId,
     )
@@ -324,6 +448,7 @@ export class RecordingsManager extends EventEmitter {
         store.write()
         this.emitItem(item)
       }
+      void this.pumpTranscriptionQueue()
     }
     return cancelled
   }
@@ -335,6 +460,7 @@ export class RecordingsManager extends EventEmitter {
     if (!recordingId) return
     const item = this.getCatalog()[recordingId]
     if (!item) return
+    const terminal = event.type === "complete" || event.type === "error"
     if (event.type === "progress") {
       item.status = event.stage === "complete" ? "completed" : "transcribing"
       item.progress = event.fraction
@@ -351,6 +477,7 @@ export class RecordingsManager extends EventEmitter {
     }
     await store.write()
     this.emitItem(item)
+    if (terminal) await this.pumpTranscriptionQueue()
   }
 
   private emitItem(item: RecordingCatalogItem): void {

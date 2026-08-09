@@ -7,6 +7,7 @@ import {
   IoCloudDownload,
   IoDocumentText,
   IoPlayCircle,
+  IoAddCircle,
   IoRefreshCircle,
   IoStopCircle,
   IoTrashBin,
@@ -22,6 +23,9 @@ export const RecordingsView: FC = () => {
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [manualUrl, setManualUrl] = useState("")
+  const [addingManual, setAddingManual] = useState(false)
+  const [startCollapsed, setStartCollapsed] = useState(true)
   const [collapsedCourses, setCollapsedCourses] = useState<
     Record<string, boolean>
   >({})
@@ -34,6 +38,14 @@ export const RecordingsView: FC = () => {
       .then(value => setCatalog(value || {}))
       .catch(err => setOperationError(String(err)))
       .finally(() => setLoading(false))
+    ipcRenderer
+      .invoke("settings")
+      .then(value =>
+        setStartCollapsed(value?.recordingsStartCollapsed !== false),
+      )
+      .catch(() => {
+        // Keep the safe collapsed default if settings cannot be loaded.
+      })
 
     const onSync = (_e: unknown, value: boolean) => setSyncing(value)
     const onCatalog = (
@@ -98,6 +110,21 @@ export const RecordingsView: FC = () => {
     }
   }
 
+  const addManualRecording = async () => {
+    if (!manualUrl.trim()) return
+    setOperationError("")
+    setAddingManual(true)
+    try {
+      await ipcRenderer.invoke("recordings:add-manual", manualUrl)
+      setManualUrl("")
+      setDiscoveryMessage(t("manualAdded"))
+    } catch (err) {
+      setOperationError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAddingManual(false)
+    }
+  }
+
   const items = Object.values(catalog).sort(
     (a, b) =>
       a.recording.courseName.localeCompare(b.recording.courseName) ||
@@ -124,13 +151,17 @@ export const RecordingsView: FC = () => {
   const transcribingCount = items.filter(
     item => item.status === "transcribing",
   ).length
+  const queuedCount = items.filter(item => item.status === "queued").length
   const batchState = syncing
     ? t("batch.checking")
     : downloadingCount
       ? t("batch.downloading", { count: downloadingCount })
       : transcribingCount
-        ? t("batch.transcribing", { count: transcribingCount })
-        : t("batch.ready")
+        ? t("batch.transcribing", { count: transcribingCount }) +
+          (queuedCount ? ` · ${t("batch.queued", { count: queuedCount })}` : "")
+        : queuedCount
+          ? t("batch.queued", { count: queuedCount })
+          : t("batch.ready")
   if (loading) {
     return (
       <div className="recordings-view section">
@@ -150,7 +181,9 @@ export const RecordingsView: FC = () => {
             </span>
             <span
               className={`batch-state ${
-                syncing || downloadingCount || transcribingCount ? "busy" : ""
+                syncing || downloadingCount || transcribingCount || queuedCount
+                  ? "busy"
+                  : ""
               }`}
             >
               {batchState}
@@ -192,6 +225,30 @@ export const RecordingsView: FC = () => {
         </div>
       </div>
 
+      <form
+        className="recordings-manual-form"
+        onSubmit={event => {
+          event.preventDefault()
+          addManualRecording()
+        }}
+      >
+        <input
+          type="url"
+          value={manualUrl}
+          onChange={event => setManualUrl(event.target.value)}
+          placeholder={t("manualLinkPlaceholder")}
+          aria-label={t("manualLinkLabel")}
+        />
+        <button
+          className="confirm-button"
+          type="submit"
+          disabled={!manualUrl.trim() || addingManual}
+        >
+          <IoAddCircle />
+          {addingManual ? t("manualAdding") : t("manualAdd")}
+        </button>
+      </form>
+
       {operationError ? (
         <div className="error-status">{operationError}</div>
       ) : null}
@@ -206,7 +263,8 @@ export const RecordingsView: FC = () => {
       ) : (
         <div className="recordings-list">
           {courseGroups.map(group => {
-            const collapsed = !!collapsedCourses[group.courseName]
+            const collapsed =
+              collapsedCourses[group.courseName] ?? startCollapsed
             const groupIds = group.items.map(item => item.recording.recordingId)
             const allSelected = groupIds.every(id => selected[id])
             return (
@@ -215,10 +273,14 @@ export const RecordingsView: FC = () => {
                   <button
                     className="course-collapse-button"
                     onClick={() =>
-                      setCollapsedCourses(previous => ({
-                        ...previous,
-                        [group.courseName]: !previous[group.courseName],
-                      }))
+                      setCollapsedCourses(previous => {
+                        const isCollapsed =
+                          previous[group.courseName] ?? startCollapsed
+                        return {
+                          ...previous,
+                          [group.courseName]: !isCollapsed,
+                        }
+                      })
                     }
                     aria-expanded={!collapsed}
                   >
@@ -246,6 +308,7 @@ export const RecordingsView: FC = () => {
                       const recordingId = item.recording.recordingId
                       const busy =
                         item.status === "downloading" ||
+                        item.status === "queued" ||
                         item.status === "transcribing"
                       return (
                         <div key={recordingId} className="recording-item">

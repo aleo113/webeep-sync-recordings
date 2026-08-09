@@ -16,7 +16,7 @@ const { log } = createLogger("Store")
  * store.json manifest version, to be increased when breaking changes are made so that a correct
  * fixes for the change can be implemented in the {@link updateManifestVersion} function
  */
-const CURRENT_MANIFEST_VERSION = 5
+const CURRENT_MANIFEST_VERSION = 6
 
 /**
  * Check in the Settings page in the app for detailed explanation of what each setting does
@@ -41,12 +41,14 @@ export interface Settings {
   recordingsMaxConcurrent?: number
   recordingsAutoDownload?: boolean
   recordingsAutoTranscribe?: boolean
+  recordingsStartCollapsed?: boolean
   transcriberPythonPath?: string
   transcriberPoliwebexPath?: string
   transcriberWorkspacePath?: string
   transcriberOutputPath?: string
   transcriberMaterialsPath?: string
   transcriberWhisperModel?: string
+  transcriberWhisperNumCores?: number
   transcriberNotesMode?: "transcript-only" | "prompt-pack" | "api"
 }
 
@@ -76,6 +78,22 @@ export interface Persistence {
   >
   recordingsLastChecked?: number
   recordingCatalog?: Record<string, RecordingCatalogItem>
+  recordingDiscoveryState?: {
+    modules: Record<
+      string,
+      {
+        sourceUrl: string
+        resolvedUrl: string
+        kind: "webex" | "archive" | "unsupported"
+      }
+    >
+    archives: Record<
+      string,
+      {
+        knownCandidateUrls: string[]
+      }
+    >
+  }
   spidCredentials?: string
 }
 
@@ -108,6 +126,7 @@ export const defaultSettings: Required<Settings> = {
   recordingsMaxConcurrent: 1,
   recordingsAutoDownload: false,
   recordingsAutoTranscribe: false,
+  recordingsStartCollapsed: true,
   transcriberPythonPath: "python3",
   transcriberPoliwebexPath:
     process.env.POLIWEBEX_PATH ||
@@ -116,6 +135,7 @@ export const defaultSettings: Required<Settings> = {
   transcriberOutputPath: path.join(app.getPath("documents"), "WeBeep Notes"),
   transcriberMaterialsPath: "",
   transcriberWhisperModel: "small",
+  transcriberWhisperNumCores: 2,
   transcriberNotesMode: "transcript-only",
 }
 
@@ -146,6 +166,7 @@ function checkStoreIntegrity() {
         courses: {},
         sentMessageNotifications: {},
         downloadedRecordings: {},
+        recordingDiscoveryState: { modules: {}, archives: {} },
       },
     }
   if (!store.data.persistence) {
@@ -153,6 +174,7 @@ function checkStoreIntegrity() {
       courses: {},
       sentMessageNotifications: {},
       downloadedRecordings: {},
+      recordingDiscoveryState: { modules: {}, archives: {} },
     }
   } else {
     if (!store.data.persistence.courses) store.data.persistence.courses = {}
@@ -162,6 +184,12 @@ function checkStoreIntegrity() {
       store.data.persistence.downloadedRecordings = {}
     if (!store.data.persistence.recordingCatalog)
       store.data.persistence.recordingCatalog = {}
+    if (!store.data.persistence.recordingDiscoveryState) {
+      store.data.persistence.recordingDiscoveryState = {
+        modules: {},
+        archives: {},
+      }
+    }
 
     for (const id in store.data.persistence.courses) {
       // for retrocompatibility, if the shape is not right reset the whole object
@@ -243,6 +271,11 @@ async function updateManifestVersion() {
         transcriberRoot,
         "PoliWebex",
       )
+    }
+  }
+  if (ver < 6) {
+    for (const course of Object.values(store.data.persistence.courses)) {
+      if (course.archiveUrl) delete course.archiveUrl
     }
   }
 

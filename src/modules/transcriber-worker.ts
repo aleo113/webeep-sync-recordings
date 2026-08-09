@@ -2,12 +2,17 @@ import { ChildProcessWithoutNullStreams, spawn } from "child_process"
 import { EventEmitter } from "events"
 import readline from "readline"
 import { randomUUID } from "crypto"
+import fs from "fs"
+import path from "path"
+import { app } from "electron"
 import { store, storeIsReady } from "./store"
 
 export interface TranscriberJobRequest {
   recordingId: string
   mediaPath: string
   sourceUrl: string
+  materialsPath: string
+  onJobId?: (jobId: string) => void
 }
 
 export interface TranscriberDownloadRequest {
@@ -32,6 +37,7 @@ export class TranscriberWorker extends EventEmitter {
   async start(request: TranscriberJobRequest): Promise<string> {
     await storeIsReady()
     const jobId = randomUUID()
+    request.onJobId?.(jobId)
     this.launch(jobId, {
       type: "start",
       job_id: jobId,
@@ -40,8 +46,9 @@ export class TranscriberWorker extends EventEmitter {
       lecture_id: request.recordingId,
       workspace_root: store.data.settings.transcriberWorkspacePath,
       output_root: store.data.settings.transcriberOutputPath,
-      materials_root: store.data.settings.transcriberMaterialsPath || null,
+      materials_root: request.materialsPath,
       whisper_model: store.data.settings.transcriberWhisperModel,
+      whisper_num_cores: store.data.settings.transcriberWhisperNumCores,
       notes_mode: store.data.settings.transcriberNotesMode,
     })
     return jobId
@@ -66,30 +73,54 @@ export class TranscriberWorker extends EventEmitter {
         }
       }
       this.on("event", onEvent)
+      const bundledPoliwebex = this.runtimePath("PoliWebex")
       this.launch(jobId, {
         type: "download",
         job_id: jobId,
         url: request.url,
         output_dir: request.outputDir,
-        poliwebex_path: store.data.settings.transcriberPoliwebexPath,
+        poliwebex_path: fs.existsSync(bundledPoliwebex)
+          ? bundledPoliwebex
+          : store.data.settings.transcriberPoliwebexPath,
         skip_keyring: false,
       })
     })
   }
 
   private launch(jobId: string, command: Record<string, unknown>): void {
-    const python = store.data.settings.transcriberPythonPath || "python3"
-    const child = spawn(python, ["-m", "transcriber.worker"], {
+    const bundledWorker = this.runtimePath(
+      process.platform === "win32"
+        ? "bin/transcriber-worker.exe"
+        : "bin/transcriber-worker",
+    )
+    const developmentPython = this.runtimePath(
+      process.platform === "win32"
+        ? ".venv/Scripts/python.exe"
+        : ".venv/bin/python",
+    )
+    const executable = fs.existsSync(bundledWorker)
+      ? bundledWorker
+      : fs.existsSync(developmentPython)
+        ? developmentPython
+        : store.data.settings.transcriberPythonPath || "python3"
+    const args =
+      executable === bundledWorker ? [] : ["-m", "transcriber.worker"]
+    const child = spawn(executable, args, {
       env: process.env,
       stdio: ["pipe", "pipe", "pipe"],
     })
     this.jobs.set(jobId, child)
+    let terminalEventReceived = false
 
     readline.createInterface({ input: child.stdout }).on("line", line => {
       try {
         const event = JSON.parse(line) as TranscriberWorkerEvent
+        if (event.type === "complete" || event.type === "error") {
+          terminalEventReceived = true
+        }
         this.emit("event", event)
       } catch {
+        terminalEventReceived = true
         this.emit("event", {
           type: "error",
           job_id: jobId,
@@ -105,6 +136,7 @@ export class TranscriberWorker extends EventEmitter {
     })
     child.on("error", err => {
       this.jobs.delete(jobId)
+      terminalEventReceived = true
       this.emit("event", {
         type: "error",
         job_id: jobId,
@@ -112,23 +144,30 @@ export class TranscriberWorker extends EventEmitter {
         message: err.message,
       } satisfies TranscriberWorkerEvent)
     })
-    child.on("exit", (code, signal) => {
+    child.on("close", (code, signal) => {
       this.jobs.delete(jobId)
-      if (signal || (code && code !== 0)) {
+      if (!terminalEventReceived) {
         this.emit("event", {
           type: "error",
           job_id: jobId,
-          code: signal ? "CANCELLED" : "WORKER_EXITED",
+          code: signal === "SIGTERM" ? "CANCELLED" : "WORKER_EXITED",
           message:
             stderr ||
-            (signal
+            (signal === "SIGTERM"
               ? "Transcriber worker was cancelled."
-              : `Transcriber worker exited with code ${code}`),
+              : `Transcriber worker exited without returning a result (code ${code ?? "unknown"}${signal ? `, signal ${signal}` : ""}).`),
         } satisfies TranscriberWorkerEvent)
       }
     })
 
     child.stdin.end(`${JSON.stringify(command)}\n`)
+  }
+
+  private runtimePath(relativePath: string): string {
+    const root = app.isPackaged
+      ? path.join(process.resourcesPath, "transcriber")
+      : path.resolve(app.getAppPath(), "../Transcriber")
+    return path.join(root, relativePath)
   }
 
   cancel(jobId: string): boolean {

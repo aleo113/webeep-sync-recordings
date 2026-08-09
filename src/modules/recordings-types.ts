@@ -36,6 +36,7 @@ export type RecordingJobStatus =
   | "available"
   | "downloading"
   | "downloaded"
+  | "queued"
   | "transcribing"
   | "completed"
   | "error"

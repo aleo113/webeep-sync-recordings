@@ -74,7 +74,7 @@ module.exports = {
     {
       name: "@electron-forge/maker-deb",
       config: {
-        bin: "WeBeep Sync",
+        bin: "WeBeep Sync Recordings",
         name: "webeep-sync",
         productName: "WeBeep Sync",
         description: "Keep all your WeBeep files synced on your computer!",
@@ -99,7 +99,7 @@ module.exports = {
     {
       name: "@electron-forge/maker-rpm",
       config: {
-        bin: "WeBeep Sync",
+        bin: "WeBeep Sync Recordings",
         name: "webeep-sync",
         productName: "WeBeep Sync",
         description: "Keep all your WeBeep files synced on your computer!",

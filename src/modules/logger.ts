@@ -33,23 +33,18 @@ class Logger extends EventEmitter {
       ?.substring(6) as keyof typeof LogLevel
     this.logLevel = LogLevel[logArg] ?? LogLevel.INFO
 
-    if (!DEV) {
-      fs.mkdir(logFolderPath, { recursive: true }).then(async () => {
-        const logPath = path.join(
-          logFolderPath,
-          `${timeStamp()}.log`.replace(/:/g, "."),
-        )
-        this.logFile = await fs.open(logPath, "w")
-        this.writeToFile(
-          `-- WeBeep Sync LOG BEGIN --\nLog Level: ${
-            LogLevel[this.logLevel]
-          }\n\n`,
-        )
-
-        this.ready = true
-        this.emit("ready")
-      })
-    }
+    fs.mkdir(logFolderPath, { recursive: true }).then(async () => {
+      const logPath = path.join(
+        logFolderPath,
+        `${timeStamp()}.log`.replace(/:/g, "."),
+      )
+      this.logFile = await fs.open(logPath, "w")
+      this.ready = true
+      this.emit("ready")
+      this.writeToFile(
+        `-- WeBeep Sync LOG BEGIN --\nLog Level: ${LogLevel[this.logLevel]}\n\n`,
+      )
+    })
   }
 
   /**
@@ -58,7 +53,10 @@ class Logger extends EventEmitter {
    * @param str the string to be appended to the log file
    */
   private async writeToFile(str: string) {
-    if (!this.ready) this.once("ready", () => this.writeToFile(str))
+    if (!this.ready) {
+      this.once("ready", () => this.writeToFile(str))
+      return
+    }
     if (this.isWriting)
       this.once("finished_writing", () => this.writeToFile(str))
     else {
@@ -89,8 +87,8 @@ class Logger extends EventEmitter {
     if (this.logLevel < LogLevel.WARN) return
     try {
       const msg = `[${timeStamp()}] <WARN> ${this.formatLogMessage(message, extra)}`
-      if (!this.logFile) console.error(msg)
-      else this.writeToFile(msg)
+      if (DEV || !this.logFile) console.error(msg)
+      this.writeToFile(msg)
     } catch (e) {}
   }
 
@@ -98,8 +96,8 @@ class Logger extends EventEmitter {
     if (this.logLevel < LogLevel.INFO) return
     try {
       const msg = `[${timeStamp()}] <INFO> ${this.formatLogMessage(message, extra)}`
-      if (!this.logFile) console.log(msg)
-      else this.writeToFile(msg)
+      if (DEV || !this.logFile) console.log(msg)
+      this.writeToFile(msg)
     } catch (e) {}
   }
 
@@ -107,8 +105,8 @@ class Logger extends EventEmitter {
     if (this.logLevel < LogLevel.DEBUG) return
     try {
       const msg = `[${timeStamp()}] <DBUG> ${this.formatLogMessage(message, extra)}`
-      if (!this.logFile) console.log(msg)
-      else this.writeToFile(msg)
+      if (DEV || !this.logFile) console.log(msg)
+      this.writeToFile(msg)
     } catch (e) {}
   }
 

@@ -138,6 +138,11 @@ export async function getAunicaUrlFromWebeep(
     await recordingBrowser.navigateAndWait(aunicaUrl)
 
     const finalUrl = await recordingBrowser.executeScript(`
+      const currentUrl = window.location.href || '';
+      if (
+        currentUrl.includes('recman_frontend') ||
+        currentUrl.includes('getservizio.xml')
+      ) return currentUrl;
       const links = Array.from(document.querySelectorAll('a, button, [role="button"]'));
       const found = links.find(el => {
         const href = el.href || el.getAttribute('data-href') || '';
@@ -199,11 +204,7 @@ function extractCandidateUrlsFromHtml(html: string, baseUrl: string): string[] {
         normalized.includes("webex.com") ||
         normalized.includes("evn_preview_link") ||
         normalized.includes("preview_link") ||
-        normalized.includes("transfer_id=") ||
-        normalized.includes("getservizio.xml") ||
-        normalized.includes("aunicalogin.polimi.it") ||
-        normalized.includes("recman_frontend") ||
-        normalized.includes("recording")
+        normalized.includes("transfer_id=")
       ) {
         urls.add(normalized)
       }
@@ -212,11 +213,7 @@ function extractCandidateUrlsFromHtml(html: string, baseUrl: string): string[] {
         trimmed.includes("webex.com") ||
         trimmed.includes("evn_preview_link") ||
         trimmed.includes("preview_link") ||
-        trimmed.includes("transfer_id=") ||
-        trimmed.includes("getservizio.xml") ||
-        trimmed.includes("aunicalogin.polimi.it") ||
-        trimmed.includes("recman_frontend") ||
-        trimmed.includes("recording")
+        trimmed.includes("transfer_id=")
       ) {
         urls.add(trimmed)
       }
@@ -238,8 +235,31 @@ interface RecManRecordingCandidate {
   dateText?: string
 }
 
+interface RecManIncrementalOptions {
+  knownCandidateUrls?: ReadonlySet<string>
+  onCandidateResolved?: (candidateUrl: string) => void
+}
+
+const ARCHIVE_KNOWN_ROW_OVERLAP = 2
+
+function isMeaningfulRecordingTitle(title?: string): title is string {
+  if (!title) return false
+  const normalized = title.trim()
+  const isDate =
+    /^\d{1,2}[/:.-]\d{1,2}(?:[/:.-]\d{2,4})?(?:\s+\d{1,2}:\d{2})?$/.test(
+      normalized,
+    )
+  return Boolean(
+    normalized &&
+    !/^\d+\s*(?:min|mins|minutes|minuti)$/i.test(normalized) &&
+    !/^\d+(?:[.,]\d+)?\s*(?:kb|mb|gb)$/i.test(normalized) &&
+    !isDate,
+  )
+}
+
 export async function extractWebExUrlsFromRecMan(
   recmanUrl: string,
+  incremental: RecManIncrementalOptions = {},
 ): Promise<RecManRecordingCandidate[]> {
   log(`extractWebExUrlsFromRecMan start for: ${recmanUrl}`)
   try {
@@ -264,6 +284,35 @@ export async function extractWebExUrlsFromRecMan(
     )
     await new Promise(r => setTimeout(r, 2000))
 
+    const hasIncrementalBoundary = Boolean(incremental.knownCandidateUrls?.size)
+    const expandedArchiveUrl = hasIncrementalBoundary
+      ? null
+      : await recordingBrowser.executeScript(`
+          const links = Array.from(document.querySelectorAll('a[href]'));
+          const pageLengthLinks = links
+            .map(link => link.href || '')
+            .filter(href => /action=plen_(?:\\d+|all)/i.test(href));
+          const score = href => {
+            const match = href.match(/action=plen_(\\d+)/i);
+            if (match) return Number(match[1]);
+            return /action=plen_all/i.test(href) ? Number.MAX_SAFE_INTEGER : 0;
+          };
+          return pageLengthLinks.sort((a, b) => score(b) - score(a))[0] || null;
+        `)
+    if (expandedArchiveUrl && expandedArchiveUrl !== recmanUrl) {
+      log(`Expanding RecMan archive to its largest page: ${expandedArchiveUrl}`)
+      await recordingBrowser.navigateAndWait(
+        expandedArchiveUrl,
+        ".TableDati, .TableDati-tbody, #form_tabella_transfers",
+        30000,
+      )
+      await new Promise(r => setTimeout(r, 1000))
+    }
+
+    const activeArchiveUrl = await recordingBrowser.executeScript(
+      "return window.location.href",
+    )
+
     const afterDebug = await recordingBrowser.executeScript(`
       return ({
         title: document.title,
@@ -276,8 +325,10 @@ export async function extractWebExUrlsFromRecMan(
     `)
     log(`RecMan page state after navigation: ${JSON.stringify(afterDebug)}`)
 
-    const html = await fetchRecManHtml(recmanUrl)
-    const htmlUrls = html ? extractCandidateUrlsFromHtml(html, recmanUrl) : []
+    const html = await fetchRecManHtml(activeArchiveUrl)
+    const htmlUrls = html
+      ? extractCandidateUrlsFromHtml(html, activeArchiveUrl)
+      : []
     log(`extractWebExUrlsFromRecMan fetched html candidates=${htmlUrls.length}`)
 
     let recordingUrls: Array<{
@@ -287,6 +338,12 @@ export async function extractWebExUrlsFromRecMan(
     }> = []
     try {
       recordingUrls = await recordingBrowser.executeScript(`
+        const headerCells = Array.from(document.querySelectorAll('table tr'))
+          .map(row => Array.from(row.querySelectorAll('th')).map(cell => (cell.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase()))
+          .find(cells => cells.length > 0) || [];
+        const topicIndex = headerCells.findIndex(text =>
+          text.includes('argomento') || text.includes('topic') || text.includes('titolo')
+        );
         return Array.from(document.querySelectorAll('a[href], area[href]'))
           .map(element => {
             const href = element.href || '';
@@ -298,8 +355,14 @@ export async function extractWebExUrlsFromRecMan(
               : [];
             const dateText = cells.find(text => /\\d{1,2}[\\/-]\\d{1,2}[\\/-]\\d{2,4}/.test(text));
             const generic = /^(video|webex|link|apri|open|vedi|visualizza|download|registrazione)$/i;
-            const title = cells
+            const topicTitle = topicIndex >= 0 ? cells[topicIndex] : '';
+            const invalidTitle = text =>
+              /^\\d+\\s*(?:min|mins|minutes|minuti)$/i.test(text) ||
+              /^\\d+(?:[.,]\\d+)?\\s*(?:kb|mb|gb)$/i.test(text) ||
+              /^\\d{1,2}[\\/:.-]\\d{1,2}/.test(text);
+            const title = (!invalidTitle(topicTitle) && topicTitle) || cells
               .filter(text => text !== dateText && !generic.test(text) && text.length > 3)
+              .filter(text => !invalidTitle(text))
               .sort((a, b) => b.length - a.length)[0];
             return { href, title, dateText };
           })
@@ -362,8 +425,20 @@ export async function extractWebExUrlsFromRecMan(
     )
 
     const webexUrls: RecManRecordingCandidate[] = []
+    let consecutiveKnownCandidates = 0
     for (const candidate of combinedUrls) {
       const recUrl = candidate.href
+      if (incremental.knownCandidateUrls?.has(recUrl)) {
+        consecutiveKnownCandidates++
+        if (consecutiveKnownCandidates >= ARCHIVE_KNOWN_ROW_OVERLAP) {
+          debug(
+            `Reached ${consecutiveKnownCandidates} known RecMan rows; stopping incremental scan`,
+          )
+          break
+        }
+        continue
+      }
+      consecutiveKnownCandidates = 0
       try {
         if (recUrl.includes("webex.com") && extractVideoID(recUrl)) {
           webexUrls.push({
@@ -371,16 +446,20 @@ export async function extractWebExUrlsFromRecMan(
             title: candidate.title,
             dateText: candidate.dateText,
           })
+          incremental.onCandidateResolved?.(recUrl)
           continue
         }
-        await recordingBrowser.navigateAndWait(recUrl)
-
-        const webexUrl = await recordingBrowser.executeScript(`
-          const redirect = document.body.innerHTML.match(/location\\.href\s*=\s*['\"](.*?)['\"]/);
-          if (redirect) return redirect[1];
-          const windowLocation = window.location.href;
-          return windowLocation && windowLocation.includes('webex.com') ? windowLocation : null;
-        `)
+        const resolved =
+          await recordingBrowser.navigateInTemporaryWindow(recUrl)
+        const redirect = resolved.html.match(
+          /location\.href\s*=\s*['"](.*?)['"]/,
+        )
+        const webexUrl =
+          resolved.urls.find(url => url.includes("webex.com")) ||
+          (resolved.finalUrl.includes("webex.com")
+            ? resolved.finalUrl
+            : null) ||
+          (redirect && redirect[1])
 
         if (webexUrl && webexUrl.includes("webex.com")) {
           webexUrls.push({
@@ -388,6 +467,7 @@ export async function extractWebExUrlsFromRecMan(
             title: candidate.title,
             dateText: candidate.dateText,
           })
+          incremental.onCandidateResolved?.(recUrl)
         }
       } catch (e) {
         debug(`Failed to extract WebEx URL from ${recUrl}:`, e)
@@ -401,6 +481,9 @@ export async function extractWebExUrlsFromRecMan(
         uniqueByRecordingId.set(recordingId, candidate)
       }
     }
+    log(
+      `Resolved ${uniqueByRecordingId.size} unique WebEx recordings from ${combinedUrls.length} RecMan candidates`,
+    )
     return Array.from(uniqueByRecordingId.values())
   } catch (e) {
     error(`Failed to extract WebEx URLs from RecMan: ${String(e)}`)
@@ -490,10 +573,12 @@ export async function extractLectureMetadataFromArchive(
         const recordingId = extractVideoID(webexUrl)
         if (!recordingId) continue
 
-        let title = candidate.title || `Recording ${recordingId}`
+        let title = isMeaningfulRecordingTitle(candidate.title)
+          ? candidate.title
+          : `Recording ${recordingId}`
         const date = parseLectureDate(candidate.dateText || null)
         try {
-          if (!candidate.title) {
+          if (!isMeaningfulRecordingTitle(candidate.title)) {
             const streamInfo = await getWebExStreamInfo(webexUrl)
             if (streamInfo) {
               title = streamInfo.title
@@ -680,34 +765,105 @@ export async function checkForNewRecordings(): Promise<RecordingDiscoveryResult>
   let activitiesChecked = 0
   let unsupportedActivities = 0
   const failures: string[] = []
+  const discoveryState = (store.data.persistence.recordingDiscoveryState ||= {
+    modules: {},
+    archives: {},
+  })
+  const catalog = store.data.persistence.recordingCatalog || {}
 
   for (const course of syncableCourses) {
     try {
       const modules = await moodleClient.getRecordingModules(course)
-      const savedArchiveUrl =
-        store.data.persistence.courses[course.id]?.archiveUrl?.trim()
-      if (
-        savedArchiveUrl &&
-        !modules.some(module => module.url === savedArchiveUrl)
-      ) {
-        modules.push({
-          id: -course.id,
-          name: "Saved recordings archive",
-          url: savedArchiveUrl,
-          courseId: course.id,
-        })
+      const hasArchiveModule = modules.some(module => {
+        const name = module.name.toLowerCase()
+        const url = module.url.toLowerCase()
+        return (
+          name.includes("archivio registrazioni") ||
+          name.includes("recordings archive") ||
+          url.includes("getservizio.xml") ||
+          url.includes("recman_frontend")
+        )
+      })
+      if (!hasArchiveModule) {
+        const fallbackModuleKey = `${course.id}:${-course.id}`
+        const cachedArchiveModule = discoveryState.modules[fallbackModuleKey]
+        const freshArchiveUrl =
+          cachedArchiveModule?.kind === "archive"
+            ? cachedArchiveModule.sourceUrl
+            : await getAunicaUrlFromWebeep(course.id)
+        if (freshArchiveUrl) {
+          log(
+            `Discovered fresh recordings archive entry for course ${course.id}: ${freshArchiveUrl}`,
+          )
+          modules.push({
+            id: -course.id,
+            name: "Archivio registrazioni",
+            url: freshArchiveUrl,
+            courseId: course.id,
+          })
+        } else {
+          debug(
+            `No fresh recordings archive entry found for course ${course.id}`,
+          )
+        }
       }
 
       for (const module of modules) {
         activitiesChecked++
         const webexUrls: RecManRecordingCandidate[] = []
         let archiveUrl: string | undefined
+        const moduleKey = `${course.id}:${module.id}`
+        const cachedModule = discoveryState.modules[moduleKey]
         try {
-          if (module.url.includes("webex.com") && extractVideoID(module.url)) {
+          if (
+            cachedModule?.sourceUrl === module.url &&
+            cachedModule.kind === "unsupported"
+          ) {
+            unsupportedActivities++
+            continue
+          } else if (
+            cachedModule?.sourceUrl === module.url &&
+            cachedModule.kind === "webex"
+          ) {
             webexUrls.push({
-              webexUrl: await canonicalizeWebExUrl(module.url),
+              webexUrl: cachedModule.resolvedUrl,
               title: module.name.trim() || undefined,
             })
+          } else if (
+            cachedModule?.sourceUrl === module.url &&
+            cachedModule.kind === "archive"
+          ) {
+            archiveUrl = cachedModule.resolvedUrl
+            const archiveState = (discoveryState.archives[archiveUrl] ||= {
+              knownCandidateUrls: [],
+            })
+            const newlyResolvedCandidates: string[] = []
+            webexUrls.push(
+              ...(await extractWebExUrlsFromRecMan(archiveUrl, {
+                knownCandidateUrls: new Set(archiveState.knownCandidateUrls),
+                onCandidateResolved: url => newlyResolvedCandidates.push(url),
+              })),
+            )
+            archiveState.knownCandidateUrls = Array.from(
+              new Set([
+                ...newlyResolvedCandidates,
+                ...archiveState.knownCandidateUrls,
+              ]),
+            )
+          } else if (
+            module.url.includes("webex.com") &&
+            extractVideoID(module.url)
+          ) {
+            const webexUrl = await canonicalizeWebExUrl(module.url)
+            webexUrls.push({
+              webexUrl,
+              title: module.name.trim() || undefined,
+            })
+            discoveryState.modules[moduleKey] = {
+              sourceUrl: module.url,
+              resolvedUrl: webexUrl,
+              kind: "webex",
+            }
           } else {
             await recordingBrowser.navigateAndWait(module.url)
             await new Promise(resolve => setTimeout(resolve, 750))
@@ -722,15 +878,46 @@ export async function checkForNewRecordings(): Promise<RecordingDiscoveryResult>
               String(resolvedUrl).includes("getservizio.xml")
 
             if (String(resolvedUrl).includes("webex.com")) {
+              const webexUrl = String(resolvedUrl)
               webexUrls.push({
-                webexUrl: String(resolvedUrl),
+                webexUrl,
                 title: module.name.trim() || undefined,
               })
+              discoveryState.modules[moduleKey] = {
+                sourceUrl: module.url,
+                resolvedUrl: webexUrl,
+                kind: "webex",
+              }
             } else if (looksLikeArchive) {
               archiveUrl = String(resolvedUrl)
-              webexUrls.push(...(await extractWebExUrlsFromRecMan(archiveUrl)))
+              discoveryState.modules[moduleKey] = {
+                sourceUrl: module.url,
+                resolvedUrl: archiveUrl,
+                kind: "archive",
+              }
+              const archiveState = (discoveryState.archives[archiveUrl] ||= {
+                knownCandidateUrls: [],
+              })
+              const newlyResolvedCandidates: string[] = []
+              webexUrls.push(
+                ...(await extractWebExUrlsFromRecMan(archiveUrl, {
+                  knownCandidateUrls: new Set(archiveState.knownCandidateUrls),
+                  onCandidateResolved: url => newlyResolvedCandidates.push(url),
+                })),
+              )
+              archiveState.knownCandidateUrls = Array.from(
+                new Set([
+                  ...newlyResolvedCandidates,
+                  ...archiveState.knownCandidateUrls,
+                ]),
+              )
             } else {
               unsupportedActivities++
+              discoveryState.modules[moduleKey] = {
+                sourceUrl: module.url,
+                resolvedUrl: String(resolvedUrl),
+                kind: "unsupported",
+              }
               debug(
                 `Ignoring unrelated URL activity ${module.id} (${module.name}): ${resolvedUrl}`,
               )
@@ -761,12 +948,17 @@ export async function checkForNewRecordings(): Promise<RecordingDiscoveryResult>
             normalizedModuleTitle.includes("recordings archive") ||
             normalizedModuleTitle === "saved recordings archive"
           let title =
-            candidate.title ||
+            (isMeaningfulRecordingTitle(candidate.title)
+              ? candidate.title
+              : undefined) ||
             (genericModuleTitle
               ? `Recording ${recordingId}`
               : moduleTitle || `Recording ${recordingId}`)
           try {
-            if (!candidate.title) {
+            const knownTitle = catalog[recordingId]?.recording.title
+            if (isMeaningfulRecordingTitle(knownTitle)) {
+              title = knownTitle
+            } else if (!isMeaningfulRecordingTitle(candidate.title)) {
               const streamInfo = await getWebExStreamInfo(webexUrl)
               if (streamInfo) title = streamInfo.title
             }

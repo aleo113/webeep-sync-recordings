@@ -129,6 +129,57 @@ export class RecordingBrowser {
     }
   }
 
+  async navigateInTemporaryWindow(
+    url: string,
+    settleMs = 1200,
+  ): Promise<{ urls: string[]; finalUrl: string; html: string }> {
+    const win = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        webSecurity: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    })
+    const urls: string[] = []
+    const collect = (_event: Electron.Event, navigatedUrl: string) => {
+      urls.push(navigatedUrl)
+    }
+    win.webContents.on("did-navigate", collect)
+    win.webContents.on("did-navigate-in-page", collect)
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error(`Navigation timeout for ${url}`)),
+          30000,
+        )
+        win.webContents.once("did-finish-load", () => {
+          clearTimeout(timer)
+          resolve()
+        })
+        win.webContents.once(
+          "did-fail-load",
+          (_event, errorCode, errorDescription) => {
+            clearTimeout(timer)
+            reject(new Error(`Load failed: ${errorCode} ${errorDescription}`))
+          },
+        )
+        win.loadURL(url)
+      })
+      await new Promise(resolve => setTimeout(resolve, settleMs))
+      return {
+        urls: Array.from(new Set(urls)),
+        finalUrl: win.webContents.getURL(),
+        html: await win.webContents.executeJavaScript(
+          "document.documentElement.outerHTML",
+        ),
+      }
+    } finally {
+      if (!win.isDestroyed()) win.destroy()
+    }
+  }
+
   // DOM values cross Electron's serialization boundary and are validated by callers.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async executeScript(script: string): Promise<any> {

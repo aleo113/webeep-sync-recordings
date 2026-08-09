@@ -667,6 +667,13 @@ ipcMain.handle("recordings:sync-now", async () => {
   return { success: true }
 })
 
+ipcMain.handle("recordings:add-manual", async (e, webexUrl: unknown) => {
+  if (typeof webexUrl !== "string") {
+    throw new Error("A recording link is required")
+  }
+  return recordingsManager.addManualRecording(webexUrl)
+})
+
 ipcMain.handle("recordings:delete", async (e, recordingId: string) => {
   await recordingsManager.deleteRecording(recordingId)
   return { success: true }

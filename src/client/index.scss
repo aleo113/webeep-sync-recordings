@@ -1309,6 +1309,25 @@ $modal-anim-time: 0.15s;
     gap: 16px;
   }
 
+  .recordings-manual-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+
+    input {
+      min-width: 0;
+      flex: 1;
+    }
+
+    button {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+  }
+
   .recordings-list {
     display: flex;
     flex-direction: column;
@@ -1436,6 +1455,7 @@ $modal-anim-time: 0.15s;
         }
 
         &.downloading,
+        &.queued,
         &.transcribing {
           color: $system-blue;
           background-color: rgba($system-blue, 0.1);
