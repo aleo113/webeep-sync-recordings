@@ -310,6 +310,21 @@ export const RecordingsView: FC = () => {
                         item.status === "downloading" ||
                         item.status === "queued" ||
                         item.status === "transcribing"
+                      const transcriptionStageLabel =
+                        item.status === "transcribing" &&
+                        item.transcriptionStage === "materials"
+                          ? t("status.processingMaterials")
+                          : item.status === "transcribing" &&
+                              item.transcriptionStage === "notes"
+                            ? t("status.generatingNotes")
+                            : item.status === "transcribing" &&
+                                item.transcriptionStage === "starting"
+                              ? t("status.preparingTranscription")
+                              : t(`status.${item.status}`)
+                      const showProgress =
+                        busy &&
+                        typeof item.progress === "number" &&
+                        item.transcriptionStage !== "notes"
                       return (
                         <div key={recordingId} className="recording-item">
                           <Checkbox
@@ -333,13 +348,13 @@ export const RecordingsView: FC = () => {
                               <span
                                 className={`recording-status ${item.status}`}
                               >
-                                {t(`status.${item.status}`)}
-                                {typeof item.progress === "number"
+                                {transcriptionStageLabel}
+                                {showProgress
                                   ? ` · ${Math.round(item.progress * 100)}%`
                                   : ""}
                               </span>
                             </div>
-                            {busy && typeof item.progress === "number" ? (
+                            {showProgress ? (
                               <div className="progress-bar">
                                 <div
                                   className="progress-bar-inside"

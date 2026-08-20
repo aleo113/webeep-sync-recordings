@@ -40,7 +40,10 @@ export class RecordingsManager extends EventEmitter {
   private syncing = false
   private interval: NodeJS.Timeout | null = null
   private currentDownloads = new Map<string, { cancel: () => void }>()
-  private transcriptionJobs = new Map<string, string>()
+  private transcriptionJobs = new Map<
+    string,
+    { recordingId: string; mediaPath: string }
+  >()
   private transcriptionQueue: string[] = []
   private pumpingTranscriptions = false
 
@@ -55,7 +58,7 @@ export class RecordingsManager extends EventEmitter {
 
   async startPolling(): Promise<void> {
     await storeIsReady()
-    await this.recoverInterruptedTranscriptions()
+    await this.recoverInterruptedJobs()
     this.restartPolling()
     if (store.data.settings.recordingsEnabled && loginManager.isLogged) {
       setTimeout(() => {
@@ -66,13 +69,21 @@ export class RecordingsManager extends EventEmitter {
     }
   }
 
-  private async recoverInterruptedTranscriptions(): Promise<void> {
+  private async recoverInterruptedJobs(): Promise<void> {
     const catalog = this.getCatalog()
     let recovered = false
     for (const item of Object.values(catalog)) {
+      if (item.status === "downloading") {
+        item.status = item.filePath ? "downloaded" : "available"
+        item.progress = undefined
+        item.error = "Download was interrupted. You can start it again."
+        recovered = true
+        continue
+      }
       if (!["queued", "transcribing"].includes(item.status)) continue
       item.status = item.filePath ? "downloaded" : "available"
       item.progress = undefined
+      item.transcriptionStage = undefined
       item.error = "Transcription was interrupted. You can start it again."
       recovered = true
     }
@@ -273,6 +284,7 @@ export class RecordingsManager extends EventEmitter {
       }
       item.status = "downloaded"
       item.filePath = filePath
+      item.mediaRecordingId = recording.recordingId
       item.progress = 1
       this.markDownloaded(recording.recordingId, {
         webexUrl: recording.webexUrl,
@@ -304,19 +316,47 @@ export class RecordingsManager extends EventEmitter {
     const ticket = await getWebExTicketCookie()
     if (!ticket) {
       onProgress(0)
+      const attemptDir = await fs.mkdtemp(
+        path.join(courseDir, `.webeep-download-${recording.recordingId}-`),
+      )
       try {
         const downloadedPath = await transcriberWorker.download({
           url: recording.webexUrl,
-          outputDir: courseDir,
+          // PoliWebex's runner falls back to the newest media file in its
+          // output directory. A fresh directory prevents a failed download
+          // from being mistaken for a different, pre-existing recording.
+          outputDir: attemptDir,
           onJobId: jobId =>
             this.currentDownloads.set(recording.recordingId, {
               cancel: () => transcriberWorker.cancel(jobId),
             }),
         })
+        const relativePath = path.relative(attemptDir, downloadedPath)
+        if (
+          relativePath.startsWith("..") ||
+          path.isAbsolute(relativePath) ||
+          relativePath === ""
+        ) {
+          throw new Error(
+            "Downloader returned a media file from outside this download attempt.",
+          )
+        }
+        const hasAriaResumeFile = await fs
+          .access(`${downloadedPath}.aria2`)
+          .then(() => true)
+          .catch(() => false)
+        if (hasAriaResumeFile) {
+          throw new Error("Downloader returned an incomplete media file.")
+        }
+        const finalPath = path.join(courseDir, path.basename(downloadedPath))
+        await fs.rename(downloadedPath, finalPath)
         onProgress(1)
-        return downloadedPath
+        return finalPath
       } finally {
         this.currentDownloads.delete(recording.recordingId)
+        await fs
+          .rm(attemptDir, { recursive: true, force: true })
+          .catch(() => {})
       }
     }
 
@@ -363,9 +403,31 @@ export class RecordingsManager extends EventEmitter {
       if (!item?.filePath || !["downloaded", "error"].includes(item.status)) {
         continue
       }
+      if (
+        item.mediaRecordingId &&
+        item.mediaRecordingId !== item.recording.recordingId
+      ) {
+        item.status = "error"
+        item.error = "This media file belongs to a different recording."
+        this.emitItem(item)
+        continue
+      }
+      const duplicateOwner = Object.values(this.getCatalog()).find(
+        other =>
+          other !== item &&
+          other.filePath &&
+          path.resolve(other.filePath) === path.resolve(item.filePath!),
+      )
+      if (duplicateOwner) {
+        item.status = "error"
+        item.error = `This media file is also assigned to ${duplicateOwner.recording.title}. Download this recording again.`
+        this.emitItem(item)
+        continue
+      }
       item.status = "queued"
       item.error = undefined
       item.progress = undefined
+      item.transcriptionStage = undefined
       this.transcriptionQueue.push(recordingId)
       this.emitItem(item)
     }
@@ -389,21 +451,36 @@ export class RecordingsManager extends EventEmitter {
         try {
           item.status = "transcribing"
           item.progress = 0
+          item.transcriptionStage = "starting"
           await store.write()
           this.emitItem(item)
+          const courseFolderName = item.recording.courseName.replace(
+            /[/\\?%*:;|"<>]/g,
+            "-",
+          )
           await transcriberWorker.start({
             recordingId,
             mediaPath: item.filePath,
             sourceUrl: item.recording.webexUrl,
             materialsPath: path.join(
               store.data.settings.downloadPath,
-              item.recording.courseName.replace(/[/\\?%*:;|"<>]/g, "-"),
+              courseFolderName,
             ),
-            onJobId: id => this.transcriptionJobs.set(id, recordingId),
+            outputPath: path.join(
+              store.data.settings.transcriberOutputPath,
+              courseFolderName,
+            ),
+            onJobId: id =>
+              this.transcriptionJobs.set(id, {
+                recordingId,
+                mediaPath: item.filePath!,
+              }),
           })
         } catch (err) {
-          for (const [jobId, id] of Array.from(this.transcriptionJobs)) {
-            if (id === recordingId) this.transcriptionJobs.delete(jobId)
+          for (const [jobId, job] of Array.from(this.transcriptionJobs)) {
+            if (job.recordingId === recordingId) {
+              this.transcriptionJobs.delete(jobId)
+            }
           }
           item.status = "error"
           item.error = `Could not start transcription: ${String(err)}`
@@ -427,6 +504,7 @@ export class RecordingsManager extends EventEmitter {
       if (item) {
         item.status = item.filePath ? "downloaded" : "available"
         item.progress = undefined
+        item.transcriptionStage = undefined
         item.error = "Transcription cancelled."
         void store.write()
         this.emitItem(item)
@@ -434,7 +512,7 @@ export class RecordingsManager extends EventEmitter {
       return true
     }
     const pair = Array.from(this.transcriptionJobs.entries()).find(
-      ([, id]) => id === recordingId,
+      ([, job]) => job.recordingId === recordingId,
     )
     if (!pair) return false
     const cancelled = transcriberWorker.cancel(pair[0])
@@ -444,6 +522,7 @@ export class RecordingsManager extends EventEmitter {
       if (item) {
         item.status = item.filePath ? "downloaded" : "available"
         item.progress = undefined
+        item.transcriptionStage = undefined
         item.error = "Transcription cancelled."
         store.write()
         this.emitItem(item)
@@ -456,17 +535,33 @@ export class RecordingsManager extends EventEmitter {
   private async handleTranscriberEvent(
     event: TranscriberWorkerEvent,
   ): Promise<void> {
-    const recordingId = this.transcriptionJobs.get(event.job_id)
-    if (!recordingId) return
-    const item = this.getCatalog()[recordingId]
+    const job = this.transcriptionJobs.get(event.job_id)
+    if (!job) return
+    const item = this.getCatalog()[job.recordingId]
     if (!item) return
     const terminal = event.type === "complete" || event.type === "error"
     if (event.type === "progress") {
       item.status = event.stage === "complete" ? "completed" : "transcribing"
       item.progress = event.fraction
+      item.transcriptionStage = event.stage
     } else if (event.type === "complete") {
+      const artifactMediaPath = event.artifacts?.media_file
+      if (
+        !artifactMediaPath ||
+        path.resolve(artifactMediaPath) !== path.resolve(job.mediaPath)
+      ) {
+        item.status = "error"
+        item.error =
+          "Transcriber returned results for a different media file. Nothing was attached to this recording."
+        this.transcriptionJobs.delete(event.job_id)
+        await store.write()
+        this.emitItem(item)
+        await this.pumpTranscriptionQueue()
+        return
+      }
       item.status = "completed"
       item.progress = 1
+      item.transcriptionStage = undefined
       item.transcriptPath = event.artifacts?.transcript_txt || undefined
       item.notesPath = event.artifacts?.notes_markdown || undefined
       this.transcriptionJobs.delete(event.job_id)

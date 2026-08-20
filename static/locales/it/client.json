@@ -190,7 +190,10 @@
       "downloading": "Download",
       "downloaded": "Scaricata",
       "queued": "In coda",
+      "preparingTranscription": "Preparazione trascrizione",
       "transcribing": "Trascrizione",
+      "processingMaterials": "Elaborazione materiali del corso",
+      "generatingNotes": "Generazione appunti",
       "completed": "Completata",
       "error": "Errore",
       "unsupported": "Non supportata"

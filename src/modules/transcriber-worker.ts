@@ -12,6 +12,7 @@ export interface TranscriberJobRequest {
   mediaPath: string
   sourceUrl: string
   materialsPath: string
+  outputPath: string
   onJobId?: (jobId: string) => void
 }
 
@@ -45,7 +46,7 @@ export class TranscriberWorker extends EventEmitter {
       source_url: request.sourceUrl,
       lecture_id: request.recordingId,
       workspace_root: store.data.settings.transcriberWorkspacePath,
-      output_root: store.data.settings.transcriberOutputPath,
+      output_root: request.outputPath,
       materials_root: request.materialsPath,
       whisper_model: store.data.settings.transcriberWhisperModel,
       whisper_num_cores: store.data.settings.transcriberWhisperNumCores,

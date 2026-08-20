@@ -47,9 +47,11 @@ export interface RecordingCatalogItem {
   discoveredAt: number
   status: RecordingJobStatus
   filePath?: string
+  mediaRecordingId?: string
   transcriptPath?: string
   notesPath?: string
   progress?: number
+  transcriptionStage?: string
   error?: string
 }
 

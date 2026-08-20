@@ -147,7 +147,10 @@
       "downloading": "Downloading",
       "downloaded": "Downloaded",
       "queued": "Queued",
+      "preparingTranscription": "Preparing transcription",
       "transcribing": "Transcribing",
+      "processingMaterials": "Processing course materials",
+      "generatingNotes": "Generating notes",
       "completed": "Completed",
       "error": "Error",
       "unsupported": "Unsupported"
