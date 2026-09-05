@@ -129,6 +129,7 @@ def write_metadata(
     matches: list[RetrievalMatch],
     metadata_path: Path,
     notes_model: str | None = None,
+    notes_provider: str = "codex-cli",
     notes_reasoning_effort: str | None = None,
     visual_context_path: Path | None = None,
     transcription_settings: dict[str, object] | None = None,
@@ -152,7 +153,7 @@ def write_metadata(
         "notes_markdown": str(artifacts.notes_markdown) if artifacts.notes_markdown else None,
         "notes_generator": (
             {
-                "provider": "codex-cli",
+                "provider": notes_provider,
                 "model": notes_model,
                 "reasoning_effort": notes_reasoning_effort,
             }

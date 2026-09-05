@@ -12,6 +12,7 @@ from src.notes_generator import (
     _allocate_visual_budget,
     _build_notes_prompt,
     _ensure_slide_images,
+    _run_claude,
     _run_codex,
     _validate_and_copy_visual_assets,
     normalize_obsidian_math,
@@ -48,7 +49,111 @@ class NotesGeneratorTests(unittest.TestCase):
         self.assertIn("shell_tool", command)
         self.assertIn('web_search="disabled"', command)
         self.assertIn("--image", command)
-        self.assertIn("/tmp/slide.png", command)
+        # /tmp is a symlink on macOS, so compare against the resolved path
+        self.assertIn(str(Path("/tmp/slide.png").resolve()), command)
+
+    @patch("src.notes_generator.shutil.which", return_value="/usr/local/bin/claude")
+    @patch("src.notes_generator.subprocess.run")
+    def test_claude_uses_print_mode_with_scoped_read_and_isolation(self, run, _which) -> None:
+        run.return_value = subprocess.CompletedProcess([], 0, "# Notes", "")
+        with tempfile.TemporaryDirectory() as directory:
+            slide = Path(directory) / "slide [LAB].png"
+            slide.write_bytes(b"png")
+            result = _run_claude(
+                prompt="lecture context",
+                claude_bin="claude",
+                model="sonnet",
+                timeout_seconds=60,
+                image_paths=[slide],
+            )
+        self.assertEqual(result, "# Notes")
+        command = run.call_args.args[0]
+        self.assertEqual(command[0], "/usr/local/bin/claude")
+        self.assertIn("-p", command)
+        self.assertIn("sonnet", command)
+        # Hermetic like the codex path: no user settings, MCP servers, or
+        # persisted session.
+        self.assertIn("--setting-sources", command)
+        self.assertEqual(command[command.index("--setting-sources") + 1], "")
+        self.assertIn("--strict-mcp-config", command)
+        self.assertIn("--no-session-persistence", command)
+        # Runs in a private directory, not the shared temp root.
+        run_cwd = str(run.call_args.kwargs["cwd"])
+        self.assertIn("transcriber-claude-", run_cwd)
+        self.assertNotEqual(run_cwd, tempfile.gettempdir())
+        # Read is scoped to the private run directory; copying the attachments
+        # there keeps glob metacharacters from the source path out of the rule.
+        self.assertIn("--allowed-tools", command)
+        rule = command[command.index("--allowed-tools") + 1]
+        self.assertEqual(rule, f"Read(//{Path(run_cwd).as_posix().lstrip('/')}/**)")
+        self.assertNotIn("[", rule)
+        self.assertNotIn("Read", command)
+        prompt_sent = run.call_args.kwargs["input"]
+        self.assertIn("lecture context", prompt_sent)
+        self.assertIn("<attached_image_files>", prompt_sent)
+        self.assertIn(f"{run_cwd}/01-slide [LAB].png", prompt_sent)
+
+    @patch("src.notes_generator.shutil.which", return_value="/usr/local/bin/claude")
+    @patch("src.notes_generator.subprocess.run")
+    def test_claude_without_images_allows_no_tools(self, run, _which) -> None:
+        run.return_value = subprocess.CompletedProcess([], 0, "# Notes", "")
+        _run_claude(
+            prompt="lecture context",
+            claude_bin="claude",
+            model="sonnet",
+            timeout_seconds=60,
+        )
+        command = run.call_args.args[0]
+        self.assertNotIn("--allowed-tools", command)
+
+    @patch("src.notes_generator.shutil.which", return_value="/usr/local/bin/claude")
+    @patch("src.notes_generator.subprocess.run")
+    def test_claude_skips_missing_attachments(self, run, _which) -> None:
+        run.return_value = subprocess.CompletedProcess([], 0, "# Notes", "")
+        _run_claude(
+            prompt="lecture context",
+            claude_bin="claude",
+            model="sonnet",
+            timeout_seconds=60,
+            image_paths=[Path("/nonexistent/slide.png")],
+        )
+        command = run.call_args.args[0]
+        self.assertNotIn("--allowed-tools", command)
+        self.assertNotIn("<attached_image_files>", run.call_args.kwargs["input"])
+
+    @patch("src.notes_generator.shutil.which", return_value=None)
+    def test_claude_missing_binary_raises_actionable_error(self, _which) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            _run_claude(
+                prompt="lecture context",
+                claude_bin="claude",
+                model="sonnet",
+                timeout_seconds=60,
+            )
+        self.assertIn("Claude Code CLI executable not found", str(ctx.exception))
+
+    @patch("src.notes_generator.shutil.which", return_value="/usr/local/bin/claude")
+    @patch("src.notes_generator.subprocess.run")
+    def test_claude_failure_and_empty_output_raise(self, run, _which) -> None:
+        run.return_value = subprocess.CompletedProcess([], 1, "", "not logged in")
+        with self.assertRaises(RuntimeError) as ctx:
+            _run_claude(
+                prompt="lecture context",
+                claude_bin="claude",
+                model="sonnet",
+                timeout_seconds=60,
+            )
+        self.assertIn("not logged in", str(ctx.exception))
+
+        run.return_value = subprocess.CompletedProcess([], 0, "   ", "")
+        with self.assertRaises(RuntimeError) as ctx:
+            _run_claude(
+                prompt="lecture context",
+                claude_bin="claude",
+                model="sonnet",
+                timeout_seconds=60,
+            )
+        self.assertIn("empty note", str(ctx.exception))
 
     def test_at_least_one_slide_is_embedded_without_creating_a_gallery(self) -> None:
         result = _ensure_slide_images(

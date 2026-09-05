@@ -25,10 +25,13 @@ def generate_notes_markdown(
     page_contexts: list[PdfPageContext],
     matches: list[RetrievalMatch],
     notes_assets_dir: Path,
+    notes_provider: str = "codex",
     codex_bin: str = "codex",
     codex_model: str = "gpt-5.6-luna",
     codex_reasoning_effort: str = "high",
     codex_timeout_seconds: int = 900,
+    claude_bin: str = "claude",
+    claude_model: str = "sonnet",
     max_images: int = 8,
     media_path: Path | None = None,
     visual_artifacts_dir: Path | None = None,
@@ -84,21 +87,33 @@ def generate_notes_markdown(
         video_frames=video_frames,
     )
     attached_visuals = [*rendered_images, *video_frames]
+    image_paths = [Path(str(image["path"])) for image in attached_visuals]
+    if notes_provider not in {"codex", "claude"}:
+        raise RuntimeError(f"Unsupported notes provider: {notes_provider}")
     LOGGER.info(
-        "Invoking Codex with %d slide images and %d video frames (model=%s, reasoning=%s).",
+        "Invoking %s with %d slide images and %d video frames (model=%s).",
+        notes_provider,
         len(rendered_images),
         len(video_frames),
-        codex_model,
-        codex_reasoning_effort,
+        claude_model if notes_provider == "claude" else codex_model,
     )
-    notes = _run_codex(
-        prompt=prompt,
-        codex_bin=codex_bin,
-        model=codex_model,
-        reasoning_effort=codex_reasoning_effort,
-        timeout_seconds=codex_timeout_seconds,
-        image_paths=[Path(str(image["path"])) for image in attached_visuals],
-    )
+    if notes_provider == "claude":
+        notes = _run_claude(
+            prompt=prompt,
+            claude_bin=claude_bin,
+            model=claude_model,
+            timeout_seconds=codex_timeout_seconds,
+            image_paths=image_paths,
+        )
+    else:
+        notes = _run_codex(
+            prompt=prompt,
+            codex_bin=codex_bin,
+            model=codex_model,
+            reasoning_effort=codex_reasoning_effort,
+            timeout_seconds=codex_timeout_seconds,
+            image_paths=image_paths,
+        )
     notes = _strip_markdown_fence(notes)
     notes = normalize_obsidian_math(notes)
     notes = _ensure_slide_images(notes, rendered_images)
@@ -309,6 +324,100 @@ def _run_codex(
         )
     if not result.stdout.strip():
         raise RuntimeError("Codex completed successfully but returned an empty note.")
+    return result.stdout.strip()
+
+
+def _run_claude(
+    prompt: str,
+    claude_bin: str,
+    model: str,
+    timeout_seconds: int,
+    image_paths: list[Path] | None = None,
+) -> str:
+    resolved_bin = shutil.which(claude_bin)
+    if resolved_bin is None:
+        raise RuntimeError(
+            f"Claude Code CLI executable not found: {claude_bin}. "
+            "Install Claude Code and run `claude` once to log in."
+        )
+
+    # Claude Code has no --image flag: the attached visuals are copied into a
+    # private run directory, listed in the prompt as absolute paths, and a
+    # Read tool scoped to that directory lets the model view them before
+    # writing the note. Copying keeps the Read permission rule free of glob
+    # metacharacters (e.g. "[LAB]") that lecture or workspace names could
+    # inject into the original paths.
+    resolved_images = [image_path.resolve() for image_path in image_paths or []]
+    try:
+        # The private working directory also keeps the run from picking up
+        # CLAUDE.md or .claude/ project config from the shared temp root.
+        with tempfile.TemporaryDirectory(prefix="transcriber-claude-") as run_dir_name:
+            run_dir = Path(run_dir_name)
+            attachments: list[Path] = []
+            for index, image_path in enumerate(resolved_images, start=1):
+                target = run_dir / f"{index:02d}-{image_path.name}"
+                try:
+                    shutil.copy2(image_path, target)
+                except OSError:
+                    LOGGER.warning("Skipping unreadable attachment: %s", image_path)
+                    continue
+                attachments.append(target)
+            if attachments:
+                image_lines = "\n".join(
+                    f"{index}. {attachment}"
+                    for index, attachment in enumerate(attachments, start=1)
+                )
+                prompt = (
+                    f"{prompt}\n\n<attached_image_files>\n"
+                    "The attached visuals are image files on disk, in the same order as the\n"
+                    "<attached_visuals> mapping above. Read every file with the Read tool\n"
+                    "before writing the note:\n"
+                    f"{image_lines}\n</attached_image_files>\n"
+                )
+
+            command = [
+                resolved_bin,
+                "-p",
+                "--model",
+                model,
+                "--output-format",
+                "text",
+                # Mirror the hermetic Codex invocation above: no user/project
+                # settings, rules, or hooks, no MCP servers, and no session
+                # persisted to ~/.claude with the lecture transcript in it.
+                "--setting-sources",
+                "",
+                "--strict-mcp-config",
+                "--no-session-persistence",
+            ]
+            if attachments:
+                # The prompt embeds third-party text (transcript, PDF OCR), so
+                # Read stays scoped to the run directory, not the whole disk.
+                command.extend(
+                    ["--allowed-tools", f"Read(//{run_dir.as_posix().lstrip('/')}/**)"]
+                )
+            result = subprocess.run(
+                command,
+                input=prompt,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=timeout_seconds,
+                cwd=run_dir_name,
+            )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"Claude note generation timed out after {timeout_seconds} seconds."
+        ) from exc
+
+    if result.returncode != 0:
+        error = result.stderr.strip() or result.stdout.strip() or "unknown Claude CLI error"
+        raise RuntimeError(
+            "Claude note generation failed. Confirm you are logged in (run `claude` "
+            f"interactively once) and that model {model!r} is available.\n{error}"
+        )
+    if not result.stdout.strip():
+        raise RuntimeError("Claude completed successfully but returned an empty note.")
     return result.stdout.strip()
 
 

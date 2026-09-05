@@ -18,6 +18,9 @@ class AppConfig:
     codex_reasoning_effort: str
     codex_timeout_seconds: int
     max_slide_images: int
+    notes_provider: str = "codex"
+    claude_bin: str = "claude"
+    claude_model: str = "sonnet"
     video_frames_enabled: bool = True
     video_frame_interval_seconds: int = 60
     max_video_frames: int = 8
@@ -54,7 +57,9 @@ def from_env(
     explicit_whisper_language: str | None = None,
     explicit_whisper_num_cores: int | None = None,
     explicit_notes_mode: str | None = None,
+    explicit_notes_provider: str | None = None,
     explicit_codex_model: str | None = None,
+    explicit_claude_model: str | None = None,
     explicit_codex_reasoning_effort: str | None = None,
     explicit_video_frames_enabled: bool | None = None,
     explicit_video_frame_interval_seconds: int | None = None,
@@ -89,8 +94,17 @@ def from_env(
     notes_mode = (explicit_notes_mode or os.getenv("NOTES_MODE", "api")).strip().lower()
     if notes_mode not in {"transcript-only", "prompt-pack", "api"}:
         raise ValueError("NOTES_MODE must be 'transcript-only', 'prompt-pack', or 'api'.")
+    notes_provider = (
+        explicit_notes_provider or os.getenv("NOTES_PROVIDER", "codex")
+    ).strip().lower()
+    if notes_provider not in {"codex", "claude"}:
+        raise ValueError("NOTES_PROVIDER must be 'codex' or 'claude'.")
     codex_bin = os.getenv("CODEX_BIN", "codex").strip() or "codex"
     codex_model = (explicit_codex_model or os.getenv("CODEX_MODEL", "gpt-5.6-luna")).strip()
+    claude_bin = os.getenv("CLAUDE_BIN", "claude").strip() or "claude"
+    claude_model = (explicit_claude_model or os.getenv("CLAUDE_MODEL", "sonnet")).strip()
+    if not claude_model:
+        raise ValueError("CLAUDE_MODEL cannot be empty.")
     codex_reasoning_effort = (
         explicit_codex_reasoning_effort or os.getenv("CODEX_REASONING_EFFORT", "high")
     ).strip().lower()
@@ -165,10 +179,13 @@ def from_env(
         whisper_num_cores=whisper_num_cores,
         top_k_matches=top_k,
         notes_mode=notes_mode,
+        notes_provider=notes_provider,
         codex_bin=codex_bin,
         codex_model=codex_model,
         codex_reasoning_effort=codex_reasoning_effort,
         codex_timeout_seconds=codex_timeout_seconds,
+        claude_bin=claude_bin,
+        claude_model=claude_model,
         max_slide_images=max_slide_images,
         video_frames_enabled=video_frames_enabled,
         video_frame_interval_seconds=video_frame_interval_seconds,
