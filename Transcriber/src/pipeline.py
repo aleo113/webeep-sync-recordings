@@ -265,10 +265,13 @@ def run_pipeline(
                     page_contexts=page_contexts,
                     matches=matches,
                     notes_assets_dir=notes_assets_dir,
+                    notes_provider=config.notes_provider,
                     codex_bin=config.codex_bin,
                     codex_model=config.codex_model,
                     codex_reasoning_effort=config.codex_reasoning_effort,
                     codex_timeout_seconds=config.codex_timeout_seconds,
+                    claude_bin=config.claude_bin,
+                    claude_model=config.claude_model,
                     max_images=config.max_slide_images,
                     media_path=media_file if frames_available else None,
                     visual_artifacts_dir=visual_artifacts_dir / lecture_id,
@@ -278,7 +281,11 @@ def run_pipeline(
                     max_video_frames=config.max_video_frames,
                     max_total_images=config.max_total_images,
                 )
-                LOGGER.info("Codex finished for lecture %s; writing the final note.", lecture_id)
+                LOGGER.info(
+                    "%s finished for lecture %s; writing the final note.",
+                    config.notes_provider.capitalize(),
+                    lecture_id,
+                )
                 write_notes_markdown(generated_notes, notes_markdown)
                 LOGGER.info("Final note created: %s", notes_markdown)
 
@@ -299,9 +306,22 @@ def run_pipeline(
                 artifacts=artifacts,
                 matches=matches,
                 metadata_path=metadata_json,
-                notes_model=config.codex_model if config.notes_mode == "api" else None,
+                notes_model=(
+                    (
+                        config.claude_model
+                        if config.notes_provider == "claude"
+                        else config.codex_model
+                    )
+                    if config.notes_mode == "api"
+                    else None
+                ),
+                notes_provider=(
+                    "claude-cli" if config.notes_provider == "claude" else "codex-cli"
+                ),
                 notes_reasoning_effort=(
-                    config.codex_reasoning_effort if config.notes_mode == "api" else None
+                    config.codex_reasoning_effort
+                    if config.notes_mode == "api" and config.notes_provider == "codex"
+                    else None
                 ),
                 visual_context_path=(
                     visual_artifacts_dir / lecture_id / "visual_context.json"

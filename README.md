@@ -22,9 +22,21 @@ python3 scripts/workspace.py start
 
 Setup creates `Transcriber/.venv`, installs the Python package in editable mode, and installs both JavaScript projects using their lockfiles. It can be rerun after pulling changes. It does not overwrite existing configuration or install system packages. Internet access is required for dependencies and the downloader browser; Whisper downloads the selected model on first use.
 
-Sign in to WeBeep in the app and select the courses to sync. The desktop app finds the included Python environment and PoliWebex automatically. Check for recordings, download selected lectures, then transcribe them. Transcript-only and prompt-pack modes can run without the notes-generation login. Automated notes use the locally authenticated Codex CLI; see the [Transcriber guide](Transcriber/README.md).
+Sign in to WeBeep in the app and select the courses to sync. The desktop app finds the included Python environment and PoliWebex automatically. Check for recordings, download selected lectures, then transcribe them. Transcript-only and prompt-pack modes can run without the notes-generation login. Automated notes use the selected, locally authenticated Codex or Claude CLI; see the [Transcriber guide](Transcriber/README.md).
 
 The setup helper also handles Windows virtual-environment paths (`python` can replace `python3`). On macOS and Windows, install the corresponding native tools and browser dependencies first. Linux is the locally verified development platform.
+
+### macOS
+
+Install Python, Node.js, ffmpeg and aria2 with your preferred package manager, plus pnpm 10.34.5. Then run the same setup command. On Apple Silicon, the older included Puppeteer version may need an installed Chrome browser:
+
+```sh
+export PUPPETEER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+export PUPPETEER_SKIP_DOWNLOAD=true
+python3 scripts/workspace.py setup
+```
+
+Keep that browser setting available when launching the app if using a custom browser. The worker adds Homebrew, nvm and local CLI directories to the PATH for macOS GUI launches. The standalone shell launcher works without GNU `readlink -f`. Actual macOS builds and SSO remain to be verified on a Mac.
 
 ## Verify changes
 
@@ -47,7 +59,7 @@ cd webeep-sync-recordings
 pnpm make
 ```
 
-This builds the Electron package. A fully bundled Python runtime, native tools and Whisper models are a separate distribution step; the source setup above is the supported way to run the complete suite. Signing and release credentials are required by the existing release workflows.
+This builds the Electron package. A fully bundled Python runtime, native tools and Whisper models are a separate distribution step; the source setup above is the supported way to run the complete suite. Local macOS builds can remain unsigned. Signing requires `MACOS_IDENTITY`; notarization also requires `APPLEID`, `APPLEPWD` and `TEAMID`. The release workflows pass these values from repository secrets.
 
 ## Repository history and attribution
 

@@ -65,9 +65,20 @@ def parse_args() -> argparse.Namespace:
         help="Choose transcript-only output, manual prompt packs, or Codex-generated Obsidian notes.",
     )
     parser.add_argument(
+        "--notes-provider",
+        choices=["codex", "claude"],
+        default=None,
+        help="CLI used for api-mode note generation (default: codex).",
+    )
+    parser.add_argument(
         "--codex-model",
         default=None,
         help="Codex model used for note generation (default: gpt-5.6-luna).",
+    )
+    parser.add_argument(
+        "--claude-model",
+        default=None,
+        help="Claude model used for note generation (default: sonnet).",
     )
     parser.add_argument(
         "--codex-reasoning-effort",
@@ -254,7 +265,9 @@ def main() -> int:
             explicit_whisper_language=args.default_language,
             explicit_whisper_num_cores=args.num_cores,
             explicit_notes_mode=notes_mode,
+            explicit_notes_provider=args.notes_provider,
             explicit_codex_model=args.codex_model,
+            explicit_claude_model=args.claude_model,
             explicit_codex_reasoning_effort=args.codex_reasoning_effort,
             explicit_video_frames_enabled=args.video_frames,
             explicit_video_frame_interval_seconds=args.video_frame_interval,

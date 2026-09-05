@@ -14,6 +14,13 @@ def _send(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False), flush=True)
 
 
+def _text_option(payload: dict[str, Any], key: str, default: str) -> str:
+    """A present-but-blank payload value falls back to the default, so a
+    cleared text field in the app cannot reach the CLI as --model ""."""
+    value = str(payload.get(key) or "").strip()
+    return value or default
+
+
 def _options(payload: dict[str, Any]) -> ProcessOptions:
     return ProcessOptions(
         workspace_root=Path(payload["workspace_root"]),
@@ -25,11 +32,14 @@ def _options(payload: dict[str, Any]) -> ProcessOptions:
         whisper_language=payload.get("whisper_language"),
         whisper_num_cores=payload.get("whisper_num_cores"),
         notes_mode=payload.get("notes_mode", "transcript-only"),
+        notes_provider=_text_option(payload, "notes_provider", "codex"),
         top_k_matches=int(payload.get("top_k_matches", 12)),
         codex_bin=payload.get("codex_bin", "codex"),
-        codex_model=payload.get("codex_model", "gpt-5.6-luna"),
+        codex_model=_text_option(payload, "codex_model", "gpt-5.6-luna"),
         codex_reasoning_effort=payload.get("codex_reasoning_effort", "high"),
         codex_timeout_seconds=int(payload.get("codex_timeout_seconds", 900)),
+        claude_bin=payload.get("claude_bin", "claude"),
+        claude_model=_text_option(payload, "claude_model", "sonnet"),
         max_slide_images=int(payload.get("max_slide_images", 8)),
         video_frames_enabled=bool(payload.get("video_frames_enabled", True)),
         video_frame_interval_seconds=int(payload.get("video_frame_interval_seconds", 60)),
@@ -70,6 +80,9 @@ def main() -> int:
                         retry_interval=int(command.get("retry_interval", 1)),
                         skip_keyring=bool(command.get("skip_keyring", False)),
                         on_progress=progress,
+                        spid_username=command.get("spid_username"),
+                        spid_password=command.get("spid_password"),
+                        polimi_email=command.get("polimi_email"),
                     )
                     _send(
                         {

@@ -39,6 +39,7 @@ jobs:
       - name: Build packages
         run: pnpm run publish
         env:
+          MACOS_IDENTITY: ${{ secrets.MACOS_IDENTITY }}
           APPLEID: ${{ secrets.APPLEID }}
           APPLEPWD: ${{ secrets.APPLEPWD }}
           TEAMID: ${{ secrets.TEAMID }}
@@ -48,6 +49,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: pnpm run publish --arch=arm64
         env:
+          MACOS_IDENTITY: ${{ secrets.MACOS_IDENTITY }}
           APPLEID: ${{ secrets.APPLEID }}
           APPLEPWD: ${{ secrets.APPLEPWD }}
           TEAMID: ${{ secrets.TEAMID }}

@@ -1,4 +1,4 @@
-# Transcriber (PoliWebex + Whisper + Codex lecture notes)
+# Transcriber (PoliWebex + Whisper + lecture notes)
 
 This project automates lecture note preparation with this pipeline:
 
@@ -35,12 +35,14 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Install and authenticate Codex once:
+For generated notes, install and authenticate the provider you select. For Codex:
 
 ```bash
 codex login
 codex login status
 ```
+
+For Claude, install the Claude Code CLI and run `claude` once to sign in. Select Claude in the app’s Transcription settings, or pass `--notes-provider claude --claude-model sonnet` to the standalone CLI. Both providers use the same local Whisper transcript and selected visual context.
 
 The default note model is `gpt-5.6-luna` with `high` reasoning. `codex exec`
 reuses the local ChatGPT login, so no OpenAI API key is needed.

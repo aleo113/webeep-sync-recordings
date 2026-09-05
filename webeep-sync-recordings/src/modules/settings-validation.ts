@@ -39,6 +39,7 @@ const choices: Record<string, readonly string[]> = {
     "large-v3",
     "turbo",
   ],
+  transcriberNotesProvider: ["codex", "claude"],
   transcriberNotesMode: ["transcript-only", "prompt-pack", "api"],
 }
 
@@ -61,6 +62,15 @@ export function validateSettingsUpdate(value: unknown): Settings {
     } else if (booleanKeys.includes(key)) {
       if (typeof entry !== "boolean")
         throw new Error(`${key}: expected a boolean.`)
+    } else if (
+      ["transcriberCodexModel", "transcriberClaudeModel"].includes(key)
+    ) {
+      if (
+        typeof entry !== "string" ||
+        entry.includes("\0") ||
+        entry.length > 256
+      )
+        throw new Error(`${key}: invalid model name.`)
     } else if (pathKeys.includes(key)) {
       if (typeof entry !== "string" || entry.includes("\0"))
         throw new Error(`${key}: invalid path.`)

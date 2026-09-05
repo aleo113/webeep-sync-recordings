@@ -2,7 +2,12 @@
 set -euo pipefail
 
 # Resolve project root from this script location, even when invoked via symlink.
-SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+  LINK_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+  SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+  [[ "$SCRIPT_PATH" = /* ]] || SCRIPT_PATH="$LINK_DIR/$SCRIPT_PATH"
+done
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 VENV_PYTHON3="$SCRIPT_DIR/.venv/bin/python3"
 VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python"

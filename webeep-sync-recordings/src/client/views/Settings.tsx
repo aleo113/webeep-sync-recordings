@@ -364,6 +364,61 @@ export const SettingsModal: FC<{ onClose: () => void }> = ({ onClose }) => {
                   </select>
                   <span className="desc">{t("notesModeHelp")}</span>
                 </div>
+                {settings.transcriberNotesMode === "api" && (
+                  <>
+                    <div className="setting">
+                      <label htmlFor="setting-notes-provider">
+                        {t("transcriberNotesProvider")}
+                      </label>
+                      <select
+                        id="setting-notes-provider"
+                        value={settings.transcriberNotesProvider || "codex"}
+                        onChange={event =>
+                          update(
+                            "transcriberNotesProvider",
+                            event.target.value as "codex" | "claude",
+                          )
+                        }
+                      >
+                        <option value="codex">Codex (ChatGPT)</option>
+                        <option value="claude">Claude</option>
+                      </select>
+                      <span className="desc">
+                        {t("transcriberNotesProvider_desc")}
+                      </span>
+                    </div>
+                    <div className="setting">
+                      <label htmlFor="setting-notes-model">
+                        {t("transcriberNotesModel")}
+                      </label>
+                      <input
+                        id="setting-notes-model"
+                        type="text"
+                        value={
+                          (settings.transcriberNotesProvider === "claude"
+                            ? settings.transcriberClaudeModel
+                            : settings.transcriberCodexModel) || ""
+                        }
+                        placeholder={
+                          settings.transcriberNotesProvider === "claude"
+                            ? "sonnet"
+                            : "gpt-5.6-luna"
+                        }
+                        onChange={event =>
+                          update(
+                            settings.transcriberNotesProvider === "claude"
+                              ? "transcriberClaudeModel"
+                              : "transcriberCodexModel",
+                            event.target.value,
+                          )
+                        }
+                      />
+                      <span className="desc">
+                        {t("transcriberNotesModel_desc")}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
               <details className="setting-section">
                 <summary>{t("advanced")}</summary>

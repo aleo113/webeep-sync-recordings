@@ -33,7 +33,9 @@ export const Modal: FC<{
             ),
           ).filter(
             element =>
-              element.tabIndex >= 0 && !element.matches(":disabled") && element.getClientRects().length,
+              element.tabIndex >= 0 &&
+              !element.matches(":disabled") &&
+              element.getClientRects().length,
           )
           const first = focusable[0],
             last = focusable[focusable.length - 1]

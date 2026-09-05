@@ -150,7 +150,7 @@
     "discoveryHelp": "Check now scans selected courses. Full rescan retries every link; regular checks reuse successful results and retry failures.",
     "recordingsAutoDownload_desc": "Download newly discovered lectures during scheduled checks.",
     "recordingsAutoTranscribe_desc": "Queue each new download for transcription. Only one lecture is transcribed at a time.",
-    "notesModeHelp": "Generated notes require the locally authenticated Codex CLI. Transcript and prompt-pack modes do not.",
+    "notesModeHelp": "Generated notes use your selected provider’s local CLI sign-in. Transcript and prompt-pack modes do not require it.",
     "advanced": "Advanced configuration",
     "advancedHelp": "The included worker and downloader are detected automatically. Override these paths only for a custom installation.",
     "transcriberWorkspacePath": "Temporary processing folder",
@@ -158,7 +158,11 @@
     "loadFailed": "Settings could not be loaded. Close this dialog and try again.",
     "loading": "Loading settings…",
     "save": "Save changes",
-    "invalidNumber": "Enter a whole number between {{min}} and {{max}}."
+    "invalidNumber": "Enter a whole number between {{min}} and {{max}}.",
+    "transcriberNotesProvider": "Notes generator",
+    "transcriberNotesProvider_desc": "Use the locally signed-in Codex or Claude CLI to generate notes.",
+    "transcriberNotesModel": "Notes model",
+    "transcriberNotesModel_desc": "Leave blank to use the selected provider’s default model."
   },
   "courseList": {
     "courses": "Courses",

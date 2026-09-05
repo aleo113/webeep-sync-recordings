@@ -36,6 +36,35 @@ export async function resolveWebExRecordingUrl(url: string): Promise<string> {
   return recording
 }
 
+/**
+ * Discovery drives the hidden browser through WeBeep pages, so it needs live
+ * SSO cookies in the default session — the Moodle API token alone is not
+ * enough. Returns true when WeBeep bounces the hidden browser to the login
+ * screen, meaning an interactive login is required first.
+ */
+export async function browserSessionNeedsLogin(): Promise<boolean> {
+  await recordingBrowser.navigateAndWait(
+    "https://webeep.polimi.it/my/",
+    "body",
+    15000,
+  )
+  const currentUrl = await recordingBrowser.executeScript(
+    "return window.location.href",
+  )
+  const normalized = String(currentUrl || "").toLowerCase()
+  const needsLogin =
+    normalized.includes("aunicalogin.polimi.it") ||
+    normalized.includes("shibidp.polimi.it") ||
+    normalized.includes("/auth/shibboleth") ||
+    normalized.includes("idserver.servizicie.interno.gov.it") ||
+    // An unauthenticated /my/ lands on Moodle's own login page first.
+    normalized.includes("webeep.polimi.it/login")
+  log(
+    `Browser session login check: url=${currentUrl}, needsLogin=${needsLogin}`,
+  )
+  return needsLogin
+}
+
 export async function getAunicaUrlFromWebeep(
   courseId: number,
 ): Promise<string | null> {

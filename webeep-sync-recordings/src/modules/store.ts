@@ -50,6 +50,9 @@ export interface Settings {
   transcriberWhisperModel?: string
   transcriberWhisperNumCores?: number
   transcriberNotesMode?: "transcript-only" | "prompt-pack" | "api"
+  transcriberNotesProvider?: "codex" | "claude"
+  transcriberCodexModel?: string
+  transcriberClaudeModel?: string
 }
 
 export interface Persistence {
@@ -139,6 +142,9 @@ export const defaultSettings: Required<Settings> = {
   transcriberWhisperModel: "small",
   transcriberWhisperNumCores: 2,
   transcriberNotesMode: "transcript-only",
+  transcriberNotesProvider: "codex",
+  transcriberCodexModel: "gpt-5.6-luna",
+  transcriberClaudeModel: "sonnet",
 }
 
 const storePath = path.join(app.getPath("userData"), "store.json")

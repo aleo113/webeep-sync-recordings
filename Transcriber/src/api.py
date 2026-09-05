@@ -48,11 +48,14 @@ class ProcessOptions:
     whisper_language: str | None = None
     whisper_num_cores: int | None = None
     notes_mode: str = "transcript-only"
+    notes_provider: str = "codex"
     top_k_matches: int = 12
     codex_bin: str = "codex"
     codex_model: str = "gpt-5.6-luna"
     codex_reasoning_effort: str = "high"
     codex_timeout_seconds: int = 900
+    claude_bin: str = "claude"
+    claude_model: str = "sonnet"
     max_slide_images: int = 8
     video_frames_enabled: bool = True
     video_frame_interval_seconds: int = 60
@@ -72,6 +75,9 @@ def download_recording(
     retry_interval: int = 1,
     skip_keyring: bool = False,
     on_progress: ProgressCallback | None = None,
+    spid_username: str | None = None,
+    spid_password: str | None = None,
+    polimi_email: str | None = None,
 ) -> Path:
     """Download one recording through the configured PoliWebex installation."""
     if not url.startswith(("http://", "https://")):
@@ -86,6 +92,9 @@ def download_recording(
             output_dir=output_dir.expanduser().resolve(),
             retry_interval=retry_interval,
             skip_keyring=skip_keyring,
+            spid_username=spid_username,
+            spid_password=spid_password,
+            polimi_email=polimi_email,
         )
     except Exception as exc:
         raise TranscriberError("DOWNLOAD_FAILED", str(exc)) from exc
@@ -106,6 +115,10 @@ def process_media(
         raise TranscriberError("MEDIA_NOT_FOUND", f"Media file not found: {media_path}")
     if options.notes_mode not in {"transcript-only", "prompt-pack", "api"}:
         raise TranscriberError("INVALID_NOTES_MODE", f"Unsupported notes mode: {options.notes_mode}")
+    if options.notes_provider not in {"codex", "claude"}:
+        raise TranscriberError(
+            "INVALID_NOTES_PROVIDER", f"Unsupported notes provider: {options.notes_provider}"
+        )
     if options.video_frame_interval_seconds <= 0:
         raise TranscriberError("INVALID_OPTIONS", "Video-frame interval must be greater than zero.")
     if options.max_video_frames < 0 or options.max_total_images < 0:
@@ -174,7 +187,11 @@ def process_media(
         prompt_markdown = prompt_path
         emit("notes", 1.0, "Prompt pack complete")
     elif options.notes_mode == "api":
-        emit("notes", 0.0, "Selecting visual context and invoking Codex")
+        emit(
+            "notes",
+            0.0,
+            f"Selecting visual context and invoking {options.notes_provider.capitalize()}",
+        )
         notes_markdown = output_root / f"{_safe_name(media_path.stem)}.md"
         notes = generate_notes_markdown(
             lecture_id=lecture_id,
@@ -183,10 +200,13 @@ def process_media(
             page_contexts=page_contexts,
             matches=matches,
             notes_assets_dir=output_root / "assets",
+            notes_provider=options.notes_provider,
             codex_bin=options.codex_bin,
             codex_model=options.codex_model,
             codex_reasoning_effort=options.codex_reasoning_effort,
             codex_timeout_seconds=options.codex_timeout_seconds,
+            claude_bin=options.claude_bin,
+            claude_model=options.claude_model,
             max_images=options.max_slide_images,
             media_path=media_path,
             visual_artifacts_dir=workspace / "visuals" / lecture_id,
@@ -213,9 +233,18 @@ def process_media(
         artifacts,
         matches,
         metadata_path,
-        notes_model=options.codex_model if options.notes_mode == "api" else None,
+        notes_model=(
+            (options.claude_model if options.notes_provider == "claude" else options.codex_model)
+            if options.notes_mode == "api"
+            else None
+        ),
+        notes_provider=(
+            "claude-cli" if options.notes_provider == "claude" else "codex-cli"
+        ),
         notes_reasoning_effort=(
-            options.codex_reasoning_effort if options.notes_mode == "api" else None
+            options.codex_reasoning_effort
+            if options.notes_mode == "api" and options.notes_provider == "codex"
+            else None
         ),
         visual_context_path=(
             workspace / "visuals" / lecture_id / "visual_context.json"

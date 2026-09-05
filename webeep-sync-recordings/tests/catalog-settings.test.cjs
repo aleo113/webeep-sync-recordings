@@ -39,3 +39,8 @@ test('both locales retain original settings labels and all new navigation labels
     assert.equal(data.recordings.sorts.newest.includes('sorts.'), false)
   }
 })
+
+test('Claude provider settings and empty default models are accepted', () => {
+  assert.deepEqual(validateSettingsUpdate({ transcriberNotesProvider: 'claude', transcriberClaudeModel: '' }), { transcriberNotesProvider: 'claude', transcriberClaudeModel: '' })
+  assert.throws(() => validateSettingsUpdate({ transcriberNotesProvider: 'unknown' }))
+})

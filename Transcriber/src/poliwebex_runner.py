@@ -56,6 +56,9 @@ class PoliWebexRunner:
         retry_interval: int = 1,
         skip_keyring: bool = True,
         cancel_event: threading.Event | None = None,
+        spid_username: str | None = None,
+        spid_password: str | None = None,
+        polimi_email: str | None = None,
     ) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -74,6 +77,15 @@ class PoliWebexRunner:
             cmd = [flatpak_spawn_bin, "--host"] + cmd
         if skip_keyring:
             cmd.append("-k")
+        # Without saved credentials PoliWebex prompts on stdin, which is a
+        # closed pipe under the app: pass them explicitly when provided. The
+        # command line is never logged, so the password stays out of the logs.
+        if spid_username:
+            cmd.extend(["-u", spid_username])
+        if spid_password:
+            cmd.extend(["-p", spid_password])
+        if polimi_email:
+            cmd.extend(["-e", polimi_email])
 
         env = os.environ.copy()
         path_entries: list[str] = []
@@ -180,8 +192,17 @@ class PoliWebexRunner:
         if media_file is None:
             media_file = self._latest_media(output_dir)
         if media_file is None:
+            # PoliWebex can exit 0 without downloading (e.g. an unanswered
+            # credential prompt), so surface its last output lines here too.
+            useful_output = [
+                line
+                for line in output_tail
+                if "Project powered by" not in line and not line.startswith("Features:")
+            ]
+            details = " | ".join(useful_output[-3:])
             raise RuntimeError(
                 "Download command completed but no media file was found in output directory."
+                + (f" PoliWebex output: {details}" if details else "")
             )
 
         return media_file

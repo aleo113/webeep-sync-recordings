@@ -9,6 +9,7 @@ function managerWith(item) {
   const unlink = []
   const { RecordingsManager } = load('src/modules/recordings-manager.ts', {
     './store': { store: { data, write: async () => {} }, storeIsReady: async () => {} },
+    './credentials': { credentialsManager: { load: async () => null } },
     './login': { loginManager: { isLogged: false } },
     './logger': { createLogger: () => ({ log() {}, error() {} }) },
     './recordings': { resolveWebExRecordingUrl: async () => url, getWebExStreamInfo: async () => { throw new Error('No optional metadata') } },
