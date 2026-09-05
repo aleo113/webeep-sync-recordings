@@ -1,0 +1,11 @@
+.venv/
+.tools/
+__pycache__/
+*.pyc
+.env
+logs/run.log
+*.log
+*.mp4
+artifacts/
+data/
+PoliWebex/node_modules/
