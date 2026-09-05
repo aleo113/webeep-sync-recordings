@@ -99,11 +99,16 @@ export class TranscriberWorker extends EventEmitter {
         ? ".venv/Scripts/python.exe"
         : ".venv/bin/python",
     )
+    const configuredPython = store.data.settings.transcriberPythonPath
     const executable = fs.existsSync(bundledWorker)
       ? bundledWorker
-      : fs.existsSync(developmentPython)
-        ? developmentPython
-        : store.data.settings.transcriberPythonPath || "python3"
+      : configuredPython &&
+          configuredPython !== "python3" &&
+          configuredPython !== developmentPython
+        ? configuredPython
+        : fs.existsSync(developmentPython)
+          ? developmentPython
+          : configuredPython || "python3"
     const args =
       executable === bundledWorker ? [] : ["-m", "transcriber.worker"]
     const child = spawn(executable, args, {

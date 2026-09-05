@@ -132,7 +132,33 @@
     "credentialsNote": "Le credenziali vengono usate per accedere a WebEx e scaricare le registrazioni. Vengono salvate in modo criptato sul tuo computer.",
     "logout": "Log out",
     "cancel": "Annulla",
-    "ok": "Ok"
+    "ok": "Ok",
+    "tabs": {
+      "general": "Generali",
+      "recordings": "Registrazioni",
+      "transcriber": "Trascrizione",
+      "about": "Informazioni"
+    },
+    "sections": "Sezioni delle impostazioni",
+    "appearance": "Aspetto",
+    "background": "Background e notifiche",
+    "courseFiles": "File dei corsi",
+    "discovery": "Ricerca registrazioni",
+    "downloads": "Download",
+    "display": "Visualizzazione raccolta",
+    "browseFolder": "Scegli cartella",
+    "discoveryHelp": "Controlla ora cerca nei corsi selezionati. La scansione completa ricontrolla tutti i link; i controlli periodici riutilizzano i risultati riusciti e riprovano quelli falliti.",
+    "recordingsAutoDownload_desc": "Scarica le nuove lezioni trovate durante i controlli periodici.",
+    "recordingsAutoTranscribe_desc": "Metti in coda ogni nuovo download per la trascrizione. Viene trascritta una lezione alla volta.",
+    "notesModeHelp": "Gli appunti generati richiedono l’accesso locale alla CLI Codex. Trascrizione e pacchetto prompt non lo richiedono.",
+    "advanced": "Configurazione avanzata",
+    "advancedHelp": "Il trascrittore e il downloader inclusi vengono rilevati automaticamente. Modifica questi percorsi solo per un’installazione personalizzata.",
+    "transcriberWorkspacePath": "Cartella dei file temporanei",
+    "aboutDescription": "File dei corsi WeBeep, download delle registrazioni e trascrizione delle lezioni in una sola app. Basata su WeBeep Sync originale.",
+    "loadFailed": "Impossibile caricare le impostazioni. Chiudi la finestra e riprova.",
+    "loading": "Caricamento impostazioni…",
+    "save": "Salva modifiche",
+    "invalidNumber": "Inserisci un numero intero tra {{min}} e {{max}}."
   },
   "courseList": {
     "courses": "Corsi",
@@ -169,23 +195,23 @@
     "manualAdding": "Aggiunta...",
     "manualAdded": "Registrazione aggiunta",
     "loading": "Caricamento...",
-    "noRecordings": "Nessuna registrazione scaricata",
-    "confirmDelete": "Eliminare questa registrazione?",
+    "noRecordings": "Nessuna registrazione trovata. Seleziona i corsi da sincronizzare e cerca le registrazioni, oppure aggiungi un link WebEx.",
+    "confirmDelete": "Eliminare il video scaricato di “{{title}}”? Trascrizione e appunti vengono conservati.",
     "downloading": "Download in corso...",
     "error": "Errore",
     "play": "Riproduci",
     "openFolder": "Apri cartella",
-    "delete": "Elimina"
-    ,"downloadSelected": "Scarica selezionate"
-    ,"transcribeSelected": "Trascrivi selezionate"
-    ,"cancel": "Annulla"
-    ,"selectHint": "Seleziona una o più lezioni"
-    ,"selectAll": "Seleziona tutte"
-    ,"deselectAll": "Deseleziona tutte"
-    ,"selectedCount_one": "{{count}} lezione selezionata"
-    ,"selectedCount_other": "{{count}} lezioni selezionate"
-    ,"discoverySummary": "Controllate {{activities}} attività link in {{courses}} corsi; trovate {{recordings}} registrazioni."
-    ,"status": {
+    "delete": "Elimina",
+    "downloadSelected": "Scarica selezionate",
+    "transcribeSelected": "Trascrivi selezionate",
+    "cancel": "Annulla",
+    "selectHint": "Seleziona una o più lezioni",
+    "selectAll": "Seleziona tutte",
+    "deselectAll": "Deseleziona tutte",
+    "selectedCount_one": "{{count}} lezione selezionata",
+    "selectedCount_other": "{{count}} lezioni selezionate",
+    "discoverySummary": "Controllate {{activities}} attività in {{courses}} corsi; aggiunte {{newCount}} nuove registrazioni.",
+    "status": {
       "available": "Disponibile",
       "downloading": "Download",
       "downloaded": "Scaricata",
@@ -197,6 +223,43 @@
       "completed": "Completata",
       "error": "Errore",
       "unsupported": "Non supportata"
-    }
+    },
+    "search": "Cerca lezioni o corsi",
+    "filter": "Filtra registrazioni",
+    "sort": "Ordina lezioni",
+    "filters": {
+      "all": "Tutte le registrazioni",
+      "available": "Da scaricare",
+      "downloaded": "Su questo dispositivo",
+      "active": "In corso",
+      "completed": "Trascritte",
+      "error": "Da controllare"
+    },
+    "sorts": {
+      "newest": "Più recenti",
+      "oldest": "Meno recenti",
+      "title": "Titolo A–Z"
+    },
+    "showing": "Visualizzate {{count}} di {{total}}",
+    "expandAll": "Espandi tutti",
+    "collapseAll": "Comprimi tutti",
+    "rescanAll": "Scansione completa",
+    "rescanHelp": "Ricontrolla tutte le attività e i link degli archivi, inclusi i risultati salvati. Può richiedere più tempo.",
+    "noMatches": "Nessuna registrazione corrisponde alla ricerca o al filtro.",
+    "unknownDate": "Data non disponibile",
+    "selectRecording": "Seleziona {{title}}",
+    "download": "Scarica",
+    "transcribe": "Trascrivi",
+    "openNotes": "Apri appunti",
+    "openTranscript": "Apri trascrizione",
+    "discoveryProgress": "{{completed}} di {{total}} corsi controllati · {{activities}} attività esaminate",
+    "discoveryFailures_one": "1 link o corso non è stato controllato — mostra dettagli",
+    "discoveryFailures_other": "{{count}} link o corsi non sono stati controllati — mostra dettagli"
+  },
+  "library": {
+    "navigation": "Raccolta",
+    "files": "File dei corsi",
+    "recordings": "Registrazioni",
+    "syncing": "Sincronizzazione"
   }
 }

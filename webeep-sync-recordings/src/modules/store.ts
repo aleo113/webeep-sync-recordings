@@ -85,12 +85,14 @@ export interface Persistence {
         sourceUrl: string
         resolvedUrl: string
         kind: "webex" | "archive" | "unsupported"
+        checkedAt?: number
       }
     >
     archives: Record<
       string,
       {
         knownCandidateUrls: string[]
+        lastFullCheckedAt?: number
       }
     >
   }

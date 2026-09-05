@@ -2,25 +2,19 @@
 
 The Electron application owns WeBeep authentication, Moodle resource discovery,
 the recording catalogue, downloads, job policy, persistence, and UI state.
-Transcriber remains a separate Python project and owns transcription, PDF
+Transcriber is a separate Python package in the same repository and owns transcription, PDF
 retrieval, prompt packs, and notes generation.
 
 ## Development setup
 
-Install Transcriber as an editable local dependency in its virtual environment:
+From the combined repository root:
 
 ```sh
-cd /home/aleo113/Documents/Transcriber
-.venv/bin/python -m pip install --no-build-isolation -e .
+python3 scripts/workspace.py setup
+python3 scripts/workspace.py start
 ```
 
-In WeBeep Sync settings, set **Python executable** to:
-
-```text
-/home/aleo113/Documents/Transcriber/.venv/bin/python
-```
-
-No source is copied and no Git submodule is used.
+The application discovers the sibling `Transcriber/.venv` and included `Transcriber/PoliWebex`. All three components are tracked in this repository; no submodules or external source paths are required. The Python executable setting remains available for custom installations.
 
 ## Process boundaries
 

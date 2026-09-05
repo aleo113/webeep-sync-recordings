@@ -3,6 +3,7 @@ import { IconType } from "react-icons"
 import { IoCheckbox, IoSquareOutline } from "react-icons/io5"
 
 interface CheckboxProps {
+  ariaLabel?: string
   value: boolean
   onChange: (v: boolean) => void
   color?: string
@@ -16,18 +17,23 @@ export const Checkbox: FC<CheckboxProps> = props => {
   return (
     <div
       className="checkbox"
+      role="checkbox"
+      aria-checked={props.value}
+      aria-label={props.ariaLabel}
+      tabIndex={0}
+      onClick={() => props.onChange(!props.value)}
+      onKeyDown={event => {
+        if (event.key === " " || event.key === "Enter") {
+          event.preventDefault()
+          props.onChange(!props.value)
+        }
+      }}
       style={{ backgroundColor: props.value ? props.color : undefined }}
     >
       {props.value ? (
-        <PositiveIcon
-          className="active"
-          onClick={() => props.onChange(false)}
-        />
+        <PositiveIcon className="active" />
       ) : (
-        <NegativeIcon
-          onClick={() => props.onChange(true)}
-          color={props.color}
-        />
+        <NegativeIcon color={props.color} />
       )}
     </div>
   )

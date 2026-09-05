@@ -14,6 +14,8 @@ This project automates lecture note preparation with this pipeline:
    Codex CLI, inline slide images, MathJax formulas, course-material links, and
    JSON retrieval evidence. Transcript-only and manual prompt-pack modes remain available.
 
+For the combined desktop app, start with the [repository setup guide](../README.md). The commands below are for working directly inside `Transcriber/`.
+
 ## Requirements
 
 ### System dependencies (Linux)
@@ -45,12 +47,11 @@ reuses the local ChatGPT login, so no OpenAI API key is needed.
 
 ## Setup
 
-1. Clone PoliWebex inside this workspace:
+1. Install the included PoliWebex dependencies:
 
 ```bash
-git clone https://github.com/sup3rgiu/PoliWebex
 cd PoliWebex
-npm install
+npm ci
 cd ..
 ```
 
@@ -60,7 +61,7 @@ cd ..
 cp .env.example .env
 ```
 
-Then edit `.env` and set `POLIWEBEX_PATH` (for in-workspace clone it is typically `/absolute/path/to/Transcriber/PoliWebex`).
+The included PoliWebex directory is detected automatically. Set `POLIWEBEX_PATH` only to use another copy.
 
 If Node/aria2c are installed but not visible in non-interactive shells, set:
 
@@ -153,13 +154,13 @@ Run from your home directory for a new lecture:
 
 ```bash
 cd ~
-/home/aleo113/Documents/Transcriber/run_transcriber.sh --verbose
+/path/to/webeep-suite/Transcriber/run_transcriber.sh --verbose
 ```
 
 You can also pass all normal CLI flags to the launcher:
 
 ```bash
-/home/aleo113/Documents/Transcriber/run_transcriber.sh \
+/path/to/webeep-suite/Transcriber/run_transcriber.sh \
   --urls "https://.../playback/XYZ" \
   --materials-path "/path/to/course-materials" \
   --top-k 20 \

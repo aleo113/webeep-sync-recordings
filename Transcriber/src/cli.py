@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--poliwebex-path",
         default=None,
-        help="Path to cloned PoliWebex repo. If omitted, uses POLIWEBEX_PATH env var.",
+        help="PoliWebex directory. Defaults to POLIWEBEX_PATH or the included copy.",
     )
     parser.add_argument(
         "--retry-interval",

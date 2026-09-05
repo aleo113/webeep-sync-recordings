@@ -15,11 +15,12 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "node --test tests/*.test.cjs"
   },
   "keywords": [],
   "author": "Tommaso Morganti",
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "config": {
     "forge": "./forge.config.js"
   },
@@ -65,7 +66,7 @@
     "electron-squirrel-startup": "^1.0.0",
     "got": "^12.6.1",
     "i18next": "^23.9.0",
-    "i18next-fs-backend": "~2.3.1",
+    "i18next-fs-backend": "~2.6.7",
     "lowdb": "^7.0.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

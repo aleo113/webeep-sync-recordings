@@ -12,11 +12,20 @@ import {
   IoStopCircle,
   IoTrashBin,
 } from "react-icons/io5"
+import {
+  groupRecordings,
+  canDownload,
+  canTranscribe,
+  isRecordingBusy,
+  RecordingFilter,
+  RecordingSort,
+} from "../../modules/recording-catalog"
+import type { RecordingDiscoveryProgress } from "../../modules/recordings"
 import { RecordingCatalogItem } from "../../modules/recordings-types"
 import { Checkbox } from "../components/Checkbox"
 
 export const RecordingsView: FC = () => {
-  const { t } = useTranslation("client", { keyPrefix: "recordings" })
+  const { t, i18n } = useTranslation("client", { keyPrefix: "recordings" })
   const [catalog, setCatalog] = useState<Record<string, RecordingCatalogItem>>(
     {},
   )
@@ -31,6 +40,12 @@ export const RecordingsView: FC = () => {
   >({})
   const [operationError, setOperationError] = useState("")
   const [discoveryMessage, setDiscoveryMessage] = useState("")
+  const [query, setQuery] = useState("")
+  const [filter, setFilter] = useState<RecordingFilter>("all")
+  const [sort, setSort] = useState<RecordingSort>("newest")
+  const [discoveryProgress, setDiscoveryProgress] =
+    useState<RecordingDiscoveryProgress | null>(null)
+  const [discoveryFailures, setDiscoveryFailures] = useState<string[]>([])
 
   useEffect(() => {
     ipcRenderer
@@ -47,7 +62,32 @@ export const RecordingsView: FC = () => {
         // Keep the safe collapsed default if settings cannot be loaded.
       })
 
-    const onSync = (_e: unknown, value: boolean) => setSyncing(value)
+    ipcRenderer
+      .invoke("recordings:get-sync-state")
+      .then(state => {
+        setSyncing(state.syncing)
+        setDiscoveryProgress(state.progress)
+      })
+      .catch(err => setOperationError(String(err)))
+    const onDiscoveryProgress = (
+      _event: unknown,
+      progress: RecordingDiscoveryProgress,
+    ) => setDiscoveryProgress(progress)
+    const onSettings = (
+      _event: unknown,
+      value: { recordingsStartCollapsed?: boolean },
+    ) => {
+      setStartCollapsed(value.recordingsStartCollapsed !== false)
+      setCollapsedCourses({})
+    }
+    const onSync = (_e: unknown, value: boolean) => {
+      setSyncing(value)
+      if (value) {
+        setDiscoveryFailures([])
+        setDiscoveryMessage("")
+        setOperationError("")
+      } else setDiscoveryProgress(null)
+    }
     const onCatalog = (
       _e: unknown,
       value: Record<string, RecordingCatalogItem>,
@@ -74,32 +114,35 @@ export const RecordingsView: FC = () => {
       setDiscoveryMessage(
         t("discoverySummary", {
           recordings: result.discovered,
+          newCount: result.newCount,
           activities: result.activitiesChecked,
           courses: result.coursesChecked,
         }),
       )
-      setOperationError(result.failures?.join("\n") || "")
+      setDiscoveryFailures(result.failures || [])
     }
     const onDiscoveryError = (_e: unknown, message: string) =>
       setOperationError(message)
+    ipcRenderer.on("recordings-discovery-progress", onDiscoveryProgress)
+    ipcRenderer.on("settings-updated", onSettings)
     ipcRenderer.on("recordings-syncing", onSync)
     ipcRenderer.on("recordings-catalog", onCatalog)
     ipcRenderer.on("recording-progress", onProgress)
     ipcRenderer.on("recordings-sync-complete", onComplete)
     ipcRenderer.on("recordings-sync-error", onDiscoveryError)
     return () => {
+      ipcRenderer.removeListener(
+        "recordings-discovery-progress",
+        onDiscoveryProgress,
+      )
+      ipcRenderer.removeListener("settings-updated", onSettings)
       ipcRenderer.removeListener("recordings-syncing", onSync)
       ipcRenderer.removeListener("recordings-catalog", onCatalog)
       ipcRenderer.removeListener("recording-progress", onProgress)
       ipcRenderer.removeListener("recordings-sync-complete", onComplete)
       ipcRenderer.removeListener("recordings-sync-error", onDiscoveryError)
     }
-  }, [])
-
-  const selectedIds = useMemo(
-    () => Object.keys(selected).filter(id => selected[id]),
-    [selected],
-  )
+  }, [t])
 
   const invoke = async (channel: string, ...args: unknown[]) => {
     setOperationError("")
@@ -125,26 +168,22 @@ export const RecordingsView: FC = () => {
     }
   }
 
-  const items = Object.values(catalog).sort(
-    (a, b) =>
-      a.recording.courseName.localeCompare(b.recording.courseName) ||
-      new Date(b.recording.date).getTime() -
-        new Date(a.recording.date).getTime(),
+  const items = useMemo(() => Object.values(catalog), [catalog])
+  const courseGroups = useMemo(
+    () => groupRecordings(items, query, filter, sort),
+    [items, query, filter, sort],
   )
-  const courseGroups = items.reduce<
-    Array<{ courseName: string; items: RecordingCatalogItem[] }>
-  >((groups, item) => {
-    const previous = groups[groups.length - 1]
-    if (previous?.courseName === item.recording.courseName) {
-      previous.items.push(item)
-    } else {
-      groups.push({
-        courseName: item.recording.courseName,
-        items: [item],
-      })
-    }
-    return groups
-  }, [])
+  const visibleItems = courseGroups.flatMap(group => group.items)
+  const selectedItems = visibleItems.filter(
+    item => selected[item.recording.recordingId],
+  )
+  const selectedIds = selectedItems.map(item => item.recording.recordingId)
+  const downloadIds = selectedItems
+    .filter(canDownload)
+    .map(item => item.recording.recordingId)
+  const transcribeIds = selectedItems
+    .filter(canTranscribe)
+    .map(item => item.recording.recordingId)
   const downloadingCount = items.filter(
     item => item.status === "downloading",
   ).length
@@ -201,6 +240,44 @@ export const RecordingsView: FC = () => {
         </button>
       </div>
 
+      <div className="recordings-filters">
+        <input
+          type="search"
+          aria-label={t("search")}
+          placeholder={t("search")}
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+        />
+        <select
+          aria-label={t("filter")}
+          value={filter}
+          onChange={event => setFilter(event.target.value as RecordingFilter)}
+        >
+          {[
+            "all",
+            "available",
+            "downloaded",
+            "active",
+            "completed",
+            "error",
+          ].map(value => (
+            <option key={value} value={value}>
+              {t(`filters.${value}`)}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label={t("sort")}
+          value={sort}
+          onChange={event => setSort(event.target.value as RecordingSort)}
+        >
+          {["newest", "oldest", "title"].map(value => (
+            <option key={value} value={value}>
+              {t(`sorts.${value}`)}
+            </option>
+          ))}
+        </select>
+      </div>
       <div className="recordings-toolbar">
         <span className="selection-count">
           {selectedIds.length
@@ -210,75 +287,149 @@ export const RecordingsView: FC = () => {
         <div className="button-row">
           <button
             className="confirm-button"
-            disabled={!selectedIds.length}
-            onClick={() => invoke("recordings:download", selectedIds)}
+            disabled={!downloadIds.length}
+            onClick={() => invoke("recordings:download", downloadIds)}
           >
             <IoCloudDownload /> {t("downloadSelected")}
           </button>
           <button
             className="confirm-button"
-            disabled={!selectedIds.length}
-            onClick={() => invoke("recordings:transcribe", selectedIds)}
+            disabled={!transcribeIds.length}
+            onClick={() => invoke("recordings:transcribe", transcribeIds)}
           >
             <IoDocumentText /> {t("transcribeSelected")}
           </button>
         </div>
       </div>
 
-      <form
-        className="recordings-manual-form"
-        onSubmit={event => {
-          event.preventDefault()
-          addManualRecording()
-        }}
-      >
-        <input
-          type="url"
-          value={manualUrl}
-          onChange={event => setManualUrl(event.target.value)}
-          placeholder={t("manualLinkPlaceholder")}
-          aria-label={t("manualLinkLabel")}
-        />
-        <button
-          className="confirm-button"
-          type="submit"
-          disabled={!manualUrl.trim() || addingManual}
+      <details className="recordings-manual">
+        <summary>{t("manualAdd")}</summary>
+        <form
+          className="recordings-manual-form"
+          onSubmit={event => {
+            event.preventDefault()
+            addManualRecording()
+          }}
         >
-          <IoAddCircle />
-          {addingManual ? t("manualAdding") : t("manualAdd")}
-        </button>
-      </form>
+          <input
+            type="url"
+            value={manualUrl}
+            onChange={event => setManualUrl(event.target.value)}
+            placeholder={t("manualLinkPlaceholder")}
+            aria-label={t("manualLinkLabel")}
+          />
+          <button
+            className="confirm-button"
+            type="submit"
+            disabled={!manualUrl.trim() || addingManual}
+          >
+            <IoAddCircle />
+            {addingManual ? t("manualAdding") : t("manualAdd")}
+          </button>
+        </form>
+      </details>
 
+      {syncing && discoveryProgress && (
+        <div className="discovery-progress" role="status">
+          <span>
+            {t("discoveryProgress", {
+              completed: discoveryProgress.coursesChecked,
+              total: discoveryProgress.coursesTotal,
+              activities: discoveryProgress.activitiesChecked,
+            })}
+          </span>
+          <span>
+            {discoveryProgress.courseName}
+            {discoveryProgress.activityName
+              ? ` · ${discoveryProgress.activityName}`
+              : ""}
+          </span>
+        </div>
+      )}
+      {discoveryFailures.length > 0 && (
+        <details className="discovery-failures">
+          <summary>
+            {t("discoveryFailures", { count: discoveryFailures.length })}
+          </summary>
+          <ul>
+            {discoveryFailures.map((failure, index) => (
+              <li key={index}>{failure}</li>
+            ))}
+          </ul>
+        </details>
+      )}
       {operationError ? (
-        <div className="error-status">{operationError}</div>
+        <div className="error-status" role="alert">
+          {operationError}
+        </div>
       ) : null}
       {discoveryMessage ? (
-        <div className="notes-message">{discoveryMessage}</div>
+        <div className="notes-message" role="status">
+          {discoveryMessage}
+        </div>
       ) : null}
 
-      {!items.length ? (
+      <div className="recordings-list-tools">
+        <span>
+          {t("showing", { count: visibleItems.length, total: items.length })}
+        </span>
+        <div>
+          <button
+            className="text-button"
+            onClick={() =>
+              setCollapsedCourses(
+                Object.fromEntries(
+                  courseGroups.map(group => [group.courseId, false]),
+                ),
+              )
+            }
+          >
+            {t("expandAll")}
+          </button>
+          <button
+            className="text-button"
+            onClick={() =>
+              setCollapsedCourses(
+                Object.fromEntries(
+                  courseGroups.map(group => [group.courseId, true]),
+                ),
+              )
+            }
+          >
+            {t("collapseAll")}
+          </button>
+          <button
+            className="text-button"
+            disabled={syncing}
+            title={t("rescanHelp")}
+            onClick={() => invoke("recordings:sync-now", true)}
+          >
+            {t("rescanAll")}
+          </button>
+        </div>
+      </div>
+      {!visibleItems.length ? (
         <div className="recordings-empty">
-          <p>{t("noRecordings")}</p>
+          <p>{items.length ? t("noMatches") : t("noRecordings")}</p>
         </div>
       ) : (
         <div className="recordings-list">
           {courseGroups.map(group => {
-            const collapsed =
-              collapsedCourses[group.courseName] ?? startCollapsed
+            const collapsed = collapsedCourses[group.courseId] ?? startCollapsed
             const groupIds = group.items.map(item => item.recording.recordingId)
             const allSelected = groupIds.every(id => selected[id])
             return (
-              <div className="recordings-course-group" key={group.courseName}>
+              <div className="recordings-course-group" key={group.courseId}>
                 <div className="recordings-course-header">
                   <button
                     className="course-collapse-button"
                     onClick={() =>
                       setCollapsedCourses(previous => {
                         const isCollapsed =
-                          previous[group.courseName] ?? startCollapsed
+                          previous[group.courseId] ?? startCollapsed
                         return {
                           ...previous,
-                          [group.courseName]: !isCollapsed,
+                          [group.courseId]: !isCollapsed,
                         }
                       })
                     }
@@ -306,10 +457,14 @@ export const RecordingsView: FC = () => {
                 {!collapsed
                   ? group.items.map(item => {
                       const recordingId = item.recording.recordingId
-                      const busy =
-                        item.status === "downloading" ||
-                        item.status === "queued" ||
-                        item.status === "transcribing"
+                      const busy = isRecordingBusy(item)
+                      const date = item.recording.date
+                        ? new Date(item.recording.date)
+                        : null
+                      const progress = Math.max(
+                        0,
+                        Math.min(1, item.progress || 0),
+                      )
                       const transcriptionStageLabel =
                         item.status === "transcribing" &&
                         item.transcriptionStage === "materials"
@@ -328,6 +483,9 @@ export const RecordingsView: FC = () => {
                       return (
                         <div key={recordingId} className="recording-item">
                           <Checkbox
+                            ariaLabel={t("selectRecording", {
+                              title: item.recording.title,
+                            })}
                             value={!!selected[recordingId]}
                             color="#30d896"
                             onChange={() =>
@@ -345,12 +503,21 @@ export const RecordingsView: FC = () => {
                               {item.recording.title}
                             </span>
                             <div className="recording-meta">
+                              <span>
+                                {date && !Number.isNaN(date.getTime())
+                                  ? date.toLocaleDateString(i18n.language, {
+                                      day: "numeric",
+                                      month: "short",
+                                      year: "numeric",
+                                    })
+                                  : t("unknownDate")}
+                              </span>
                               <span
                                 className={`recording-status ${item.status}`}
                               >
                                 {transcriptionStageLabel}
                                 {showProgress
-                                  ? ` · ${Math.round(item.progress * 100)}%`
+                                  ? ` · ${Math.round(progress * 100)}%`
                                   : ""}
                               </span>
                             </div>
@@ -359,10 +526,7 @@ export const RecordingsView: FC = () => {
                                 <div
                                   className="progress-bar-inside"
                                   style={{
-                                    width: `${Math.max(
-                                      2,
-                                      item.progress * 100,
-                                    )}%`,
+                                    width: `${Math.max(2, progress * 100)}%`,
                                   }}
                                 />
                               </div>
@@ -372,9 +536,59 @@ export const RecordingsView: FC = () => {
                             ) : null}
                           </div>
                           <div className="recording-actions">
+                            {canDownload(item) && (
+                              <button
+                                className="icon-button"
+                                aria-label={t("download")}
+                                title={t("download")}
+                                onClick={() =>
+                                  invoke("recordings:download", [recordingId])
+                                }
+                              >
+                                <IoCloudDownload />
+                              </button>
+                            )}
+                            {canTranscribe(item) && (
+                              <button
+                                className="icon-button"
+                                aria-label={t("transcribe")}
+                                title={t("transcribe")}
+                                onClick={() =>
+                                  invoke("recordings:transcribe", [recordingId])
+                                }
+                              >
+                                <IoDocumentText />
+                              </button>
+                            )}
+                            {(item.notesPath || item.transcriptPath) && (
+                              <button
+                                className="icon-button"
+                                aria-label={
+                                  item.notesPath
+                                    ? t("openNotes")
+                                    : t("openTranscript")
+                                }
+                                title={
+                                  item.notesPath
+                                    ? t("openNotes")
+                                    : t("openTranscript")
+                                }
+                                onClick={() =>
+                                  invoke(
+                                    "recordings:open-artifact",
+                                    recordingId,
+                                    item.notesPath ? "notes" : "transcript",
+                                  )
+                                }
+                              >
+                                <IoDocumentText />
+                              </button>
+                            )}
+
                             {busy ? (
                               <button
                                 className="icon-button danger"
+                                aria-label={t("cancel")}
                                 title={t("cancel")}
                                 onClick={() =>
                                   invoke("recordings:cancel", recordingId)
@@ -390,15 +604,28 @@ export const RecordingsView: FC = () => {
                                   onClick={() =>
                                     invoke("recordings:open", recordingId)
                                   }
+                                  aria-label={t("play")}
                                   title={t("play")}
                                 >
                                   <IoPlayCircle />
                                 </button>
                                 <button
                                   className="icon-button danger"
-                                  onClick={() =>
-                                    invoke("recordings:delete", recordingId)
-                                  }
+                                  disabled={busy}
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        t("confirmDelete", {
+                                          title: item.recording.title,
+                                        }),
+                                      )
+                                    )
+                                      void invoke(
+                                        "recordings:delete",
+                                        recordingId,
+                                      )
+                                  }}
+                                  aria-label={t("delete")}
                                   title={t("delete")}
                                 >
                                   <IoTrashBin />

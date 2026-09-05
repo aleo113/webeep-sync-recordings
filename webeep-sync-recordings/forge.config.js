@@ -2,6 +2,9 @@ const fs = require("fs")
 const path = require("path")
 require("dotenv").config()
 const AdmZip = require("adm-zip")
+const [releaseOwner, releaseRepository] = (
+  process.env.GITHUB_REPOSITORY || "aleo113/webeep-sync-recordings"
+).split("/")
 
 module.exports = {
   packagerConfig: {
@@ -127,8 +130,8 @@ module.exports = {
       name: "@electron-forge/publisher-github",
       config: {
         repository: {
-          name: "webeep-sync",
-          owner: "toto04",
+          name: releaseRepository,
+          owner: releaseOwner,
         },
         prerelease: !!process.env.PRERELEASE,
         draft: true,

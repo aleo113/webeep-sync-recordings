@@ -1,0 +1,13 @@
+# Local accounts, downloads and generated dependencies
+.env
+.env.*
+!.env.example
+.venv/
+node_modules/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.DS_Store
+/WeBeep Sync/
+/.agents/
+/.codex/

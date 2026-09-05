@@ -20,5 +20,9 @@
     "terminal-kit": "^2.4.0",
     "xml2js": "^0.4.23",
     "yargs": "^17.4.1"
+  },
+  "allowScripts": {
+    "keytar@7.9.0": true,
+    "puppeteer@13.7.0": true
   }
 }

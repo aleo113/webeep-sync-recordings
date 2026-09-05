@@ -20,6 +20,7 @@ import { storeIsReady, store } from "./modules/store"
 import { downloadManager, NewFilesList } from "./modules/download"
 import { createWindow, send, focus } from "./modules/window"
 import { setupTray, updateTrayContext, tray } from "./modules/tray"
+import { validateSettingsUpdate } from "./modules/settings-validation"
 import { recordingsManager } from "./modules/recordings-manager"
 import { credentialsManager } from "./modules/credentials"
 
@@ -204,6 +205,9 @@ downloadManager.on("new-files", files => {
   }
 })
 
+recordingsManager.on("discovery-progress", progress =>
+  send("recordings-discovery-progress", progress),
+)
 recordingsManager.on("sync-start", () => send("recordings-syncing", true))
 recordingsManager.on("sync-complete", data => {
   send("recordings-syncing", false)
@@ -525,7 +529,11 @@ ipcMain.handle("version", () => app.getVersion())
 
 // this event handles the settings update, has side effects
 ipcMain.handle("set-settings", async (e, newSettings) => {
-  store.data.settings = { ...store.data.settings, ...newSettings }
+  store.data.settings = {
+    ...store.data.settings,
+    ...validateSettingsUpdate(newSettings),
+  }
+  nativeTheme.themeSource = store.data.settings.nativeThemeSource
 
   // concurrent downloads
   if (
@@ -562,15 +570,15 @@ ipcMain.handle("set-settings", async (e, newSettings) => {
   await setLoginItem(store.data.settings.openAtLogin)
   await store.write()
   recordingsManager.restartPolling()
+  send("settings-updated", store.data.settings)
 })
 
 ipcMain.handle("get-native-theme", e => {
   return nativeTheme.themeSource
 })
 ipcMain.on("set-native-theme", async (e, theme) => {
-  nativeTheme.themeSource = theme
-  store.data.settings.nativeThemeSource = theme
-  await store.write()
+  if (["system", "light", "dark"].includes(theme))
+    nativeTheme.themeSource = theme
 })
 
 ipcMain.handle("rename-course", async (e, id: number, newName: string) => {
@@ -662,8 +670,8 @@ ipcMain.handle("recordings:get-catalog", async () => {
   return recordingsManager.getCatalog()
 })
 
-ipcMain.handle("recordings:sync-now", async () => {
-  await recordingsManager.syncRecordings()
+ipcMain.handle("recordings:sync-now", async (_event, force: unknown) => {
+  await recordingsManager.syncRecordings(force === true)
   return { success: true }
 })
 
@@ -727,9 +735,32 @@ ipcMain.handle("recordings:select-download-path", async () => {
     title: "Select recordings download folder",
   })
   if (!result.canceled) {
-    store.data.settings.recordingsDownloadPath = result.filePaths[0]
-    await store.write()
     return result.filePaths[0]
   }
   return null
 })
+
+// Folder selection remains a draft until the settings form is saved.
+ipcMain.handle("settings:select-folder", async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ["openDirectory", "createDirectory"],
+  })
+  return result.canceled ? null : result.filePaths[0]
+})
+
+ipcMain.handle(
+  "recordings:open-artifact",
+  async (_event, recordingId: string, kind: string) => {
+    const item = recordingsManager.getCatalog()[recordingId]
+    const filePath =
+      kind === "notes"
+        ? item?.notesPath
+        : kind === "transcript"
+          ? item?.transcriptPath
+          : undefined
+    if (!filePath) throw new Error("This output is not available.")
+    const { shell } = await import("electron")
+    const error = await shell.openPath(filePath)
+    if (error) throw new Error(error)
+  },
+)

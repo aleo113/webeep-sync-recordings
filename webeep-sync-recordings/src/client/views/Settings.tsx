@@ -1,591 +1,435 @@
 import { platform } from "os"
 import { ipcRenderer } from "electron"
-import React, { FC, useEffect, useState } from "react"
+import React, { FC, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { IoWarning, IoFolderOpen } from "react-icons/io5"
 import {
-  IoWarning,
-  IoMail,
-  IoLockClosed,
-  IoEye,
-  IoEyeOff,
-} from "react-icons/io5"
+  validateSettingsUpdate,
+  settingLimits,
+} from "../../modules/settings-validation"
 import { Settings } from "../../modules/store"
 import { Modal } from "../components/Modal"
 import { Link } from "../components/Link"
-
-import PolinetworkLogo from "../assets/polinetwork.svg"
 import { Switch } from "../components/Switch"
+import PolinetworkLogo from "../assets/polinetwork.svg"
 
-const themes = ["light", "dark", "system"] as const
-type Theme = (typeof themes)[number]
+const tabs = ["general", "recordings", "transcriber", "about"] as const
+type Theme = "light" | "dark" | "system"
 
-const isLinux = platform() === "linux"
-
-let prevTheme: Theme // the previous theme is stored in case the users cancel the settigns change
-export const SettingsModal: FC<{ onClose: () => void }> = props => {
+export const SettingsModal: FC<{ onClose: () => void }> = ({ onClose }) => {
   const { t } = useTranslation("client", { keyPrefix: "settings" })
-
-  const [settings, updateSettigns] =
-    useState<
-      Omit<Settings, "autosyncEnabled" | "downloadPath" | "autosyncInterval">
-    >()
-  const [theme, setTheme] = useState<Theme>("system")
+  const [settings, setSettings] = useState<Settings>()
+  const [tab, setTab] = useState<(typeof tabs)[number]>("general")
   const [version, setVersion] = useState("")
+  const [error, setError] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [numbers, setNumbers] = useState<Record<string, string>>({})
+  const savedTheme = useRef<Theme>()
+  const alive = useRef(true)
 
   useEffect(() => {
-    ipcRenderer.invoke("settings").then(s => updateSettigns(s))
-    ipcRenderer.invoke("get-native-theme").then(t => {
-      setTheme(t)
-      prevTheme = t
-    })
-    ipcRenderer.invoke("version").then(v => setVersion(v))
-  }, [])
-
-  return (
-    <Modal title={t("settings")} onClose={() => props.onClose()}>
-      {settings ? (
-        <div className="settings">
-          <div className="setting-section">
-            {theme ? (
-              <div className="setting">
-                <span>{t("colorTheme")}</span>
-                <select
-                  value={theme}
-                  onChange={e => {
-                    const theme = e.target.value as Theme
-                    ipcRenderer.send("set-native-theme", theme)
-                    setTheme(theme)
-                    updateSettigns({ ...settings, nativeThemeSource: theme })
-                  }}
-                >
-                  <option value="system">{t("theme.system")}</option>
-                  <option value="light">{t("theme.light")}</option>
-                  <option value="dark">{t("theme.dark")}</option>
-                </select>
-              </div>
-            ) : undefined}
-
-            <div className="setting">
-              <span>{t("language")}</span>
-              <select
-                value={settings.language}
-                onChange={e => {
-                  const language = e.target.value as "it" | "en"
-                  updateSettigns({ ...settings, language })
-                }}
-              >
-                <option value="it">Italiano</option>
-                <option value="en">English</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="setting-section">
-            {isLinux ? undefined : (
-              <>
-                <div className="setting">
-                  <span>{t("automaticUpdates")}</span>
-                  <Switch
-                    onChange={v =>
-                      updateSettigns({ ...settings, automaticUpdates: v })
-                    }
-                    checked={settings.automaticUpdates}
-                  />
-                  <span className="desc">{t("automaticUpdates_desc")}</span>
-                </div>
-
-                <div className="setting">
-                  <span>{t("openAtLogin")}</span>
-                  <Switch
-                    onChange={v =>
-                      updateSettigns({ ...settings, openAtLogin: v })
-                    }
-                    checked={settings.openAtLogin}
-                  />
-                </div>
-              </>
-            )}
-
-            <div className="setting">
-              <span>{t("keepOpenInBackground")}</span>
-              <Switch
-                onChange={v =>
-                  updateSettigns({ ...settings, keepOpenInBackground: v })
-                }
-                checked={settings.keepOpenInBackground}
-              />
-              <span className="desc">{t("keepOpenInBackground_desc")}</span>
-            </div>
-
-            <div
-              className={`setting ${
-                settings.keepOpenInBackground ? "" : "disabled"
-              }`}
-            >
-              <span>{t("showInTray")}</span>
-              <Switch
-                disabled={!settings.keepOpenInBackground}
-                onChange={v => updateSettigns({ ...settings, trayIcon: v })}
-                checked={settings.keepOpenInBackground && settings.trayIcon}
-              />
-            </div>
-
-            {settings.keepOpenInBackground && !settings.trayIcon ? (
-              <div className="setting-warn">
-                <IoWarning />
-                <span>{t("trayWarning")}</span>
-              </div>
-            ) : undefined}
-          </div>
-
-          <div className="setting-section">
-            <div
-              className={`setting ${
-                settings.keepOpenInBackground ? "" : "disabled"
-              }`}
-            >
-              <span>{t("notifications")}</span>
-              <Switch
-                disabled={!settings.keepOpenInBackground}
-                onChange={v =>
-                  updateSettigns({ ...settings, notificationOnNewFiles: v })
-                }
-                checked={
-                  settings.keepOpenInBackground &&
-                  settings.notificationOnNewFiles
-                }
-              />
-            </div>
-
-            <div
-              className={`setting ${
-                settings.keepOpenInBackground ? "" : "disabled"
-              }`}
-            >
-              <span>{t("msgNotifications")}</span>
-              <Switch
-                disabled={!settings.keepOpenInBackground}
-                onChange={v =>
-                  updateSettigns({ ...settings, notificationOnMessage: v })
-                }
-                checked={
-                  settings.keepOpenInBackground &&
-                  settings.notificationOnMessage
-                }
-              />
-            </div>
-          </div>
-
-          <div className="setting-section">
-            <div className="setting">
-              <span>{t("newCourses")}</span>
-              <Switch
-                onChange={v =>
-                  updateSettigns({ ...settings, syncNewCourses: v })
-                }
-                checked={settings.syncNewCourses}
-              />
-              <span className="desc">{t("newCourses_desc")}</span>
-            </div>
-            <div className="setting">
-              <span>{t("concurrentDownloads")}</span>
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={settings.maxConcurrentDownloads}
-                onChange={e => {
-                  let maxConcurrentDownloads = parseInt(e.target.value)
-                  if (maxConcurrentDownloads > 100) maxConcurrentDownloads = 100
-                  updateSettigns({ ...settings, maxConcurrentDownloads })
-                }}
-              />
-              <span className="desc">{t("concurrentDownloads_desc")}</span>
-            </div>
-          </div>
-
-          <div className="setting-section">
-            <h3>{t("recordingsSection")}</h3>
-            <div className="setting">
-              <span>{t("recordingsEnabled")}</span>
-              <Switch
-                onChange={v =>
-                  updateSettigns({ ...settings, recordingsEnabled: v })
-                }
-                checked={settings.recordingsEnabled}
-              />
-              <span className="desc">{t("recordingsEnabled_desc")}</span>
-            </div>
-            <div
-              className={`setting ${settings.recordingsEnabled ? "" : "disabled"}`}
-            >
-              <span>{t("recordingsSyncInterval")}</span>
-              <input
-                type="number"
-                min={5}
-                max={1440}
-                value={settings.recordingsSyncInterval}
-                onChange={e => {
-                  let interval = parseInt(e.target.value)
-                  if (interval < 5) interval = 5
-                  if (interval > 1440) interval = 1440
-                  updateSettigns({
-                    ...settings,
-                    recordingsSyncInterval: interval,
-                  })
-                }}
-              />
-              <span className="desc">{t("recordingsSyncInterval_desc")}</span>
-            </div>
-            <div
-              className={`setting ${settings.recordingsEnabled ? "" : "disabled"}`}
-            >
-              <span>{t("recordingsDownloadPath")}</span>
-              <button
-                className="path-button"
-                onClick={async () => {
-                  const path = await ipcRenderer.invoke(
-                    "recordings:select-download-path",
-                  )
-                  if (path)
-                    updateSettigns({
-                      ...settings,
-                      recordingsDownloadPath: path,
-                    })
-                }}
-              >
-                {settings.recordingsDownloadPath}
-              </button>
-              <span className="desc">{t("recordingsDownloadPath_desc")}</span>
-            </div>
-            <div
-              className={`setting ${settings.recordingsEnabled ? "" : "disabled"}`}
-            >
-              <span>{t("recordingsMaxConcurrent")}</span>
-              <input
-                type="number"
-                min={1}
-                max={5}
-                value={settings.recordingsMaxConcurrent}
-                onChange={e => {
-                  let val = parseInt(e.target.value)
-                  if (val < 1) val = 1
-                  if (val > 5) val = 5
-                  updateSettigns({ ...settings, recordingsMaxConcurrent: val })
-                }}
-              />
-              <span className="desc">{t("recordingsMaxConcurrent_desc")}</span>
-            </div>
-            <div className="setting">
-              <span>{t("recordingsAutoDownload")}</span>
-              <Switch
-                onChange={v =>
-                  updateSettigns({ ...settings, recordingsAutoDownload: v })
-                }
-                checked={settings.recordingsAutoDownload}
-              />
-            </div>
-            <div className="setting">
-              <span>{t("recordingsAutoTranscribe")}</span>
-              <Switch
-                disabled={!settings.recordingsAutoDownload}
-                onChange={v =>
-                  updateSettigns({ ...settings, recordingsAutoTranscribe: v })
-                }
-                checked={
-                  settings.recordingsAutoDownload &&
-                  settings.recordingsAutoTranscribe
-                }
-              />
-            </div>
-            <div className="setting">
-              <span>{t("recordingsStartCollapsed")}</span>
-              <Switch
-                onChange={v =>
-                  updateSettigns({
-                    ...settings,
-                    recordingsStartCollapsed: v,
-                  })
-                }
-                checked={settings.recordingsStartCollapsed}
-              />
-              <span className="desc">{t("recordingsStartCollapsed_desc")}</span>
-            </div>
-          </div>
-
-          <div className="setting-section">
-            <h3>{t("transcriberSection")}</h3>
-            <div className="setting">
-              <span>{t("transcriberOutputPath")}</span>
-              <input
-                type="text"
-                value={settings.transcriberOutputPath}
-                onChange={e =>
-                  updateSettigns({
-                    ...settings,
-                    transcriberOutputPath: e.target.value,
-                  })
-                }
-              />
-            </div>
-            <div className="setting">
-              <span>{t("transcriberWhisperModel")}</span>
-              <select
-                value={settings.transcriberWhisperModel}
-                onChange={e =>
-                  updateSettigns({
-                    ...settings,
-                    transcriberWhisperModel: e.target.value,
-                  })
-                }
-              >
-                <option value="tiny">tiny</option>
-                <option value="base">base</option>
-                <option value="small">small</option>
-                <option value="medium">medium</option>
-                <option value="large-v3">large-v3</option>
-                <option value="turbo">turbo</option>
-              </select>
-              <span className="desc">{t("transcriberWhisperModel_desc")}</span>
-            </div>
-            <div className="setting">
-              <span>{t("transcriberWhisperNumCores")}</span>
-              <input
-                type="number"
-                min={1}
-                max={64}
-                value={settings.transcriberWhisperNumCores}
-                onChange={e => {
-                  const parsed = Number.parseInt(e.target.value, 10)
-                  const value = Number.isFinite(parsed)
-                    ? Math.min(64, Math.max(1, parsed))
-                    : 2
-                  updateSettigns({
-                    ...settings,
-                    transcriberWhisperNumCores: value,
-                  })
-                }}
-              />
-              <span className="desc">
-                {t("transcriberWhisperNumCores_desc")}
-              </span>
-            </div>
-            <div className="setting">
-              <span>{t("transcriberNotesMode")}</span>
-              <select
-                value={settings.transcriberNotesMode}
-                onChange={e =>
-                  updateSettigns({
-                    ...settings,
-                    transcriberNotesMode: e.target.value as
-                      | "transcript-only"
-                      | "prompt-pack"
-                      | "api",
-                  })
-                }
-              >
-                <option value="transcript-only">{t("transcriptOnly")}</option>
-                <option value="prompt-pack">{t("promptPack")}</option>
-                <option value="api">{t("generatedNotes")}</option>
-              </select>
-            </div>
-          </div>
-
-          <button
-            className="danger-button"
-            onClick={() => {
-              ipcRenderer.send("logout")
-            }}
-          >
-            {t("logout")}
-          </button>
-
-          <span className="credits">
-            <span>v{version}</span>
-            <br />
-            Developed by Tommaso Morganti •{" "}
-            <Link href="https://github.com/toto04">GitHub</Link>
-            <br />
-            <Link href="https://github.com/toto04/webeep-sync">
-              Source code
-            </Link>{" "}
-            •&nbsp;
-            <Link href="https://github.com/toto04/webeep-sync/issues">
-              Report a Bug
-            </Link>
-            <br />
-            <br />
-            <Link href="https://polinetwork.org" style={{ color: "#888" }}>
-              <PolinetworkLogo fill="#888" height={32} width={32} />
-              <br />
-              Powered by PoliNetwork
-            </Link>
-          </span>
-
-          <div className="button-line-container">
-            <button
-              className="discard-button"
-              onClick={() => {
-                if (prevTheme) ipcRenderer.send("set-native-theme", prevTheme)
-                props.onClose()
-              }}
-            >
-              {t("cancel")}
-            </button>
-            <button
-              className="confirm-button"
-              onClick={async () => {
-                await ipcRenderer.invoke("set-settings", settings)
-                props.onClose()
-              }}
-            >
-              {t("ok")}
-            </button>
-          </div>
-        </div>
-      ) : undefined}
-    </Modal>
-  )
-}
-
-// Kept temporarily for migration compatibility with the earlier prototype.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars, react/no-multi-comp
-const SPIDCredentialsForm: FC = () => {
-  const { t } = useTranslation("client", { keyPrefix: "settings" })
-  const [username, setUsername] = useState("")
-  const [password, setPassword] = useState("")
-  const [email, setEmail] = useState("")
-  const [showPassword, setShowPassword] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    loadCredentials()
-  }, [])
-
-  const loadCredentials = async () => {
-    try {
-      const creds = await ipcRenderer.invoke("recordings:get-credentials")
-      if (creds) {
-        setUsername(creds.username)
-        setPassword(creds.password)
-        setEmail(creds.polimiEmail)
-        setSaved(true)
-      }
-    } catch (e) {
-      console.error("Failed to load credentials:", e)
-    }
-  }
-
-  const handleSave = async () => {
-    if (!username || !password || !email) {
-      alert(t("fillAllFields"))
-      return
-    }
-    setLoading(true)
-    try {
-      await ipcRenderer.invoke("recordings:set-credentials", {
-        username,
-        password,
-        polimiEmail: email,
+    alive.current = true
+    Promise.all([
+      ipcRenderer.invoke("settings"),
+      ipcRenderer.invoke("get-native-theme"),
+      ipcRenderer.invoke("version"),
+    ])
+      .then(([value, theme, appVersion]) => {
+        if (!alive.current) return
+        setSettings(value)
+        savedTheme.current = theme
+        setVersion(appVersion)
       })
-      setSaved(true)
-      alert(t("credentialsSaved"))
-    } catch (e) {
-      console.error("Failed to save credentials:", e)
-      alert(t("credentialsSaveError"))
-    } finally {
-      setLoading(false)
+      .catch(err => setError(String(err)))
+    return () => {
+      alive.current = false
+      if (savedTheme.current)
+        ipcRenderer.send("set-native-theme", savedTheme.current)
     }
-  }
+  }, [])
 
-  const handleClear = async () => {
-    if (!window.confirm(t("confirmClearCredentials"))) return
-    setLoading(true)
-    try {
-      await ipcRenderer.invoke("recordings:clear-credentials")
-      setUsername("")
-      setPassword("")
-      setEmail("")
-      setSaved(false)
-      alert(t("credentialsCleared"))
-    } catch (e) {
-      console.error("Failed to clear credentials:", e)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const update = <K extends keyof Settings>(key: K, value: Settings[K]) =>
+    setSettings(previous => ({ ...previous, [key]: value }))
+
+  const toggle = (
+    key: keyof Settings,
+    description?: string,
+    disabled = false,
+    label: string = key,
+  ) => (
+    <div className={`setting ${disabled ? "disabled" : ""}`} key={key}>
+      <label htmlFor={`setting-${key}`}>{t(label)}</label>
+      <Switch
+        id={`setting-${key}`}
+        checked={Boolean(settings[key])}
+        disabled={disabled}
+        onChange={value => update(key, value)}
+      />
+      {description && <span className="desc">{t(description)}</span>}
+    </div>
+  )
+  const number = (
+    key: keyof Settings,
+    min: number,
+    max: number,
+    label: string = key,
+  ) => (
+    <div className="setting" key={key}>
+      <label htmlFor={`setting-${key}`}>{t(label)}</label>
+      <input
+        id={`setting-${key}`}
+        type="number"
+        min={min}
+        max={max}
+        step={1}
+        required
+        value={numbers[key] ?? String(settings[key] ?? min)}
+        onChange={event => {
+          const value = event.target.value
+          setNumbers(previous => ({ ...previous, [key]: value }))
+          if (value !== "" && Number.isFinite(Number(value)))
+            update(key, Number(value))
+        }}
+      />
+      <span className="desc">{t(`${label}_desc`)}</span>
+    </div>
+  )
+  const folder = (key: keyof Settings, label: string = key) => (
+    <div className="setting folder-setting" key={key}>
+      <label htmlFor={`setting-${key}`}>{t(label)}</label>
+      <div className="folder-input">
+        <input
+          id={`setting-${key}`}
+          type="text"
+          required
+          value={String(settings[key] || "")}
+          onChange={event => update(key, event.target.value)}
+        />
+        <button
+          type="button"
+          className="text-button"
+          aria-label={t("browseFolder")}
+          title={t("browseFolder")}
+          onClick={async () => {
+            try {
+              const path = await ipcRenderer.invoke("settings:select-folder")
+              if (path) update(key, path)
+            } catch (err) {
+              setError(String(err))
+            }
+          }}
+        >
+          <IoFolderOpen />
+        </button>
+      </div>
+    </div>
+  )
 
   return (
-    <div className="spid-credentials-form">
-      <div className="credential-field">
-        <label>
-          <IoMail />
-          <span>{t("spidUsername")}</span>
-        </label>
-        <input
-          type="text"
-          value={username}
-          onChange={e => setUsername(e.target.value)}
-          placeholder={t("spidUsernamePlaceholder")}
-        />
-      </div>
-      <div className="credential-field">
-        <label>
-          <IoLockClosed />
-          <span>{t("spidPassword")}</span>
-        </label>
-        <div className="password-input">
-          <input
-            type={showPassword ? "text" : "password"}
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            placeholder={t("spidPasswordPlaceholder")}
-          />
+    <Modal
+      title={t("settings")}
+      onClose={() => {
+        if (!saving) onClose()
+      }}
+    >
+      <form
+        noValidate
+        className="settings"
+        onSubmit={async event => {
+          event.preventDefault()
+          if (!settings || saving) return
+          setSaving(true)
+          setError("")
+          try {
+            for (const [key, raw] of Object.entries(numbers)) {
+              const [min, max] =
+                settingLimits[key as keyof typeof settingLimits]
+              if (
+                !raw.trim() ||
+                !Number.isInteger(Number(raw)) ||
+                Number(raw) < min ||
+                Number(raw) > max
+              ) {
+                setTab(
+                  key === "maxConcurrentDownloads"
+                    ? "general"
+                    : key === "transcriberWhisperNumCores"
+                      ? "transcriber"
+                      : "recordings",
+                )
+                throw new Error(t("invalidNumber", { min, max }))
+              }
+            }
+            await ipcRenderer.invoke(
+              "set-settings",
+              validateSettingsUpdate(settings),
+            )
+            savedTheme.current = settings.nativeThemeSource
+            onClose()
+          } catch (err) {
+            setError(String(err))
+            setSaving(false)
+          }
+        }}
+      >
+        <nav className="settings-nav" aria-label={t("sections")}>
+          {tabs.map(item => (
+            <button
+              type="button"
+              key={item}
+              aria-pressed={tab === item}
+              onClick={() => setTab(item)}
+            >
+              {t(`tabs.${item}`)}
+            </button>
+          ))}
+        </nav>
+        {error && (
+          <div className="settings-error" role="alert">
+            {error}
+          </div>
+        )}
+        {!settings ? (
+          <p role="status">{error ? t("loadFailed") : t("loading")}</p>
+        ) : (
+          <fieldset disabled={saving} className="settings-content">
+            <div hidden={tab !== "general"}>
+              <div className="setting-section">
+                <h3>{t("appearance")}</h3>
+                <div className="setting">
+                  <label htmlFor="setting-theme">{t("colorTheme")}</label>
+                  <select
+                    id="setting-theme"
+                    value={settings.nativeThemeSource}
+                    onChange={event => {
+                      const theme = event.target.value as Theme
+                      ipcRenderer.send("set-native-theme", theme)
+                      update("nativeThemeSource", theme)
+                    }}
+                  >
+                    {["system", "light", "dark"].map(theme => (
+                      <option key={theme} value={theme}>
+                        {t(`theme.${theme}`)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="setting">
+                  <label htmlFor="setting-language">{t("language")}</label>
+                  <select
+                    id="setting-language"
+                    value={settings.language}
+                    onChange={event =>
+                      update("language", event.target.value as "it" | "en")
+                    }
+                  >
+                    <option value="it">Italiano</option>
+                    <option value="en">English</option>
+                  </select>
+                </div>
+              </div>
+              <div className="setting-section">
+                <h3>{t("background")}</h3>
+                {platform() !== "linux" && (
+                  <>
+                    {toggle("automaticUpdates", "automaticUpdates_desc")}
+                    {toggle("openAtLogin")}
+                  </>
+                )}
+                {toggle("keepOpenInBackground", "keepOpenInBackground_desc")}
+                {toggle(
+                  "trayIcon",
+                  undefined,
+                  !settings.keepOpenInBackground,
+                  "showInTray",
+                )}
+                {settings.keepOpenInBackground && !settings.trayIcon && (
+                  <div className="setting-warn">
+                    <IoWarning />
+                    <span>{t("trayWarning")}</span>
+                  </div>
+                )}
+                {toggle(
+                  "notificationOnNewFiles",
+                  undefined,
+                  !settings.keepOpenInBackground,
+                  "notifications",
+                )}
+                {toggle(
+                  "notificationOnMessage",
+                  undefined,
+                  !settings.keepOpenInBackground,
+                  "msgNotifications",
+                )}
+              </div>
+              <div className="setting-section">
+                <h3>{t("courseFiles")}</h3>
+                {toggle(
+                  "syncNewCourses",
+                  "newCourses_desc",
+                  false,
+                  "newCourses",
+                )}
+                {number(
+                  "maxConcurrentDownloads",
+                  1,
+                  100,
+                  "concurrentDownloads",
+                )}
+              </div>
+            </div>
+            <div hidden={tab !== "recordings"}>
+              <div className="setting-section">
+                <h3>{t("discovery")}</h3>
+                {toggle("recordingsEnabled", "recordingsEnabled_desc")}
+                <fieldset disabled={!settings.recordingsEnabled}>
+                  {number("recordingsSyncInterval", 5, 1440)}
+                </fieldset>
+                <p className="section-description">{t("discoveryHelp")}</p>
+              </div>
+              <div className="setting-section">
+                <h3>{t("downloads")}</h3>
+                {folder("recordingsDownloadPath")}
+                {number("recordingsMaxConcurrent", 1, 5)}
+                {toggle(
+                  "recordingsAutoDownload",
+                  "recordingsAutoDownload_desc",
+                  !settings.recordingsEnabled,
+                )}
+                {toggle(
+                  "recordingsAutoTranscribe",
+                  "recordingsAutoTranscribe_desc",
+                  !settings.recordingsEnabled ||
+                    !settings.recordingsAutoDownload,
+                )}
+              </div>
+              <div className="setting-section">
+                <h3>{t("display")}</h3>
+                {toggle(
+                  "recordingsStartCollapsed",
+                  "recordingsStartCollapsed_desc",
+                )}
+              </div>
+            </div>
+            <div hidden={tab !== "transcriber"}>
+              <div className="setting-section">
+                <h3>{t("transcriberSection")}</h3>
+                {folder("transcriberOutputPath")}
+                <div className="setting">
+                  <label htmlFor="setting-model">
+                    {t("transcriberWhisperModel")}
+                  </label>
+                  <select
+                    id="setting-model"
+                    value={settings.transcriberWhisperModel}
+                    onChange={event =>
+                      update("transcriberWhisperModel", event.target.value)
+                    }
+                  >
+                    {[
+                      "tiny",
+                      "base",
+                      "small",
+                      "medium",
+                      "large-v3",
+                      "turbo",
+                    ].map(model => (
+                      <option key={model}>{model}</option>
+                    ))}
+                  </select>
+                  <span className="desc">
+                    {t("transcriberWhisperModel_desc")}
+                  </span>
+                </div>
+                {number("transcriberWhisperNumCores", 1, 64)}
+                <div className="setting">
+                  <label htmlFor="setting-output-mode">
+                    {t("transcriberNotesMode")}
+                  </label>
+                  <select
+                    id="setting-output-mode"
+                    value={settings.transcriberNotesMode}
+                    onChange={event =>
+                      update(
+                        "transcriberNotesMode",
+                        event.target.value as Settings["transcriberNotesMode"],
+                      )
+                    }
+                  >
+                    <option value="transcript-only">
+                      {t("transcriptOnly")}
+                    </option>
+                    <option value="prompt-pack">{t("promptPack")}</option>
+                    <option value="api">{t("generatedNotes")}</option>
+                  </select>
+                  <span className="desc">{t("notesModeHelp")}</span>
+                </div>
+              </div>
+              <details className="setting-section">
+                <summary>{t("advanced")}</summary>
+                <p className="section-description">{t("advancedHelp")}</p>
+                {folder("transcriberWorkspacePath")}
+                {folder("transcriberPoliwebexPath")}
+                <div className="setting folder-setting">
+                  <label htmlFor="setting-python">
+                    {t("transcriberPythonPath")}
+                  </label>
+                  <input
+                    id="setting-python"
+                    value={settings.transcriberPythonPath || ""}
+                    onChange={event =>
+                      update("transcriberPythonPath", event.target.value)
+                    }
+                  />
+                </div>
+              </details>
+            </div>
+            <div hidden={tab !== "about"}>
+              <div className="setting-section settings-about">
+                <h3>WeBeep Sync Recordings</h3>
+                <p>v{version}</p>
+                <p>{t("aboutDescription")}</p>
+                <span className="credits">
+                  Developed by Tommaso Morganti •{" "}
+                  <Link href="https://github.com/toto04/webeep-sync">
+                    WeBeep Sync
+                  </Link>
+                  <br />
+                  <Link href="https://polinetwork.org">
+                    <PolinetworkLogo fill="#888" height={32} width={32} />
+                    <br />
+                    Powered by PoliNetwork
+                  </Link>
+                </span>
+                <button
+                  type="button"
+                  className="danger-button"
+                  onClick={() => ipcRenderer.send("logout")}
+                >
+                  {t("logout")}
+                </button>
+              </div>
+            </div>
+          </fieldset>
+        )}
+        <div className="settings-footer">
           <button
             type="button"
-            className="toggle-visibility"
-            onClick={() => setShowPassword(!showPassword)}
+            className="discard-button"
+            disabled={saving}
+            onClick={onClose}
           >
-            {showPassword ? <IoEyeOff /> : <IoEye />}
+            {t("cancel")}
+          </button>
+          <button
+            type="submit"
+            className="confirm-button"
+            disabled={!settings || saving}
+          >
+            {saving ? t("saving") : t("save")}
           </button>
         </div>
-      </div>
-      <div className="credential-field">
-        <label>
-          <IoMail />
-          <span>{t("polimiEmail")}</span>
-        </label>
-        <input
-          type="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          placeholder={t("polimiEmailPlaceholder")}
-        />
-      </div>
-      <div className="credential-actions">
-        <button
-          className="confirm-button"
-          onClick={handleSave}
-          disabled={loading}
-        >
-          {loading
-            ? t("saving")
-            : saved
-              ? t("updateCredentials")
-              : t("saveCredentials")}
-        </button>
-        {saved && (
-          <button
-            className="danger-button"
-            onClick={handleClear}
-            disabled={loading}
-          >
-            {t("clearCredentials")}
-          </button>
-        )}
-      </div>
-      <span className="credential-note">{t("credentialsNote")}</span>
-    </div>
+      </form>
+    </Modal>
   )
 }

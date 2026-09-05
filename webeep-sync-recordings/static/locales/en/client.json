@@ -89,74 +89,7 @@
     "concurrentDownloads_desc": "A higher number of concurrent downloads can increase download speeds, but could put more load on your network. A lower number is preferable for slower connections.",
     "logout": "Log out",
     "cancel": "Cancel",
-    "ok": "Ok"
-  },
-  "courseList": {
-    "courses": "Courses",
-    "courses_desc": "Select which courses you want to keep synced and rename the folders",
-    "row": {
-      "tooShort": "The name cannot be empty",
-      "tooLong": "Max 255 characters!",
-      "invalidCharacters": "These characters cannot be used: ",
-      "errPerm": "Cannot rename the folder, you might have a file open inside of it"
-    }
-  },
-  "recordings": {
-    "title": "Recordings",
-    "description": "Download and transcribe lectures from your selected courses",
-    "recordingCount_one": "{{count}} recording",
-    "recordingCount_other": "{{count}} recordings",
-    "courseCount_one": "{{count}} lecture",
-    "courseCount_other": "{{count}} lectures",
-    "batch": {
-      "ready": "Ready",
-      "checking": "Checking for updates",
-      "downloading_one": "{{count}} download active",
-      "downloading_other": "{{count}} downloads active",
-      "transcribing_one": "{{count}} transcription active",
-      "transcribing_other": "{{count}} transcriptions active",
-      "queued_one": "{{count}} queued",
-      "queued_other": "{{count}} queued"
-    },
-    "syncNow": "Check now",
-    "syncing": "Checking...",
-    "manualLinkLabel": "WebEx recording link",
-    "manualLinkPlaceholder": "Paste a WebEx recording link",
-    "manualAdd": "Add recording",
-    "manualAdding": "Adding...",
-    "manualAdded": "Recording added",
-    "loading": "Loading...",
-    "noRecordings": "No recordings downloaded",
-    "confirmDelete": "Delete this recording?",
-    "downloading": "Downloading...",
-    "error": "Error",
-    "play": "Play",
-    "openFolder": "Open folder",
-    "delete": "Delete"
-    ,"downloadSelected": "Download selected"
-    ,"transcribeSelected": "Transcribe selected"
-    ,"cancel": "Cancel"
-    ,"selectHint": "Select one or more lectures"
-    ,"selectAll": "Select all"
-    ,"deselectAll": "Deselect all"
-    ,"selectedCount_one": "{{count}} lecture selected"
-    ,"selectedCount_other": "{{count}} lectures selected"
-    ,"discoverySummary": "Checked {{activities}} link activities in {{courses}} courses; found {{recordings}} recordings."
-    ,"status": {
-      "available": "Available",
-      "downloading": "Downloading",
-      "downloaded": "Downloaded",
-      "queued": "Queued",
-      "preparingTranscription": "Preparing transcription",
-      "transcribing": "Transcribing",
-      "processingMaterials": "Processing course materials",
-      "generatingNotes": "Generating notes",
-      "completed": "Completed",
-      "error": "Error",
-      "unsupported": "Unsupported"
-    }
-  },
-  "settings": {
+    "ok": "Ok",
     "recordingsSection": "Recordings (WebEx)",
     "recordingsStartCollapsed": "Start course groups collapsed",
     "recordingsStartCollapsed_desc": "Keep the recordings list compact when the app opens.",
@@ -199,6 +132,134 @@
     "updateCredentials": "Update credentials",
     "clearCredentials": "Remove credentials",
     "saving": "Saving...",
-    "credentialsNote": "Credentials are used to access WebEx and download recordings. They are stored encrypted on your computer."
+    "credentialsNote": "Credentials are used to access WebEx and download recordings. They are stored encrypted on your computer.",
+    "tabs": {
+      "general": "General",
+      "recordings": "Recordings",
+      "transcriber": "Transcription",
+      "about": "About"
+    },
+    "sections": "Settings sections",
+    "appearance": "Appearance",
+    "background": "Background and notifications",
+    "courseFiles": "Course files",
+    "discovery": "Find recordings",
+    "downloads": "Downloads",
+    "display": "Library display",
+    "browseFolder": "Choose folder",
+    "discoveryHelp": "Check now scans selected courses. Full rescan retries every link; regular checks reuse successful results and retry failures.",
+    "recordingsAutoDownload_desc": "Download newly discovered lectures during scheduled checks.",
+    "recordingsAutoTranscribe_desc": "Queue each new download for transcription. Only one lecture is transcribed at a time.",
+    "notesModeHelp": "Generated notes require the locally authenticated Codex CLI. Transcript and prompt-pack modes do not.",
+    "advanced": "Advanced configuration",
+    "advancedHelp": "The included worker and downloader are detected automatically. Override these paths only for a custom installation.",
+    "transcriberWorkspacePath": "Temporary processing folder",
+    "aboutDescription": "WeBeep course files, recording downloads and lecture transcription in one app. Based on the original WeBeep Sync.",
+    "loadFailed": "Settings could not be loaded. Close this dialog and try again.",
+    "loading": "Loading settings…",
+    "save": "Save changes",
+    "invalidNumber": "Enter a whole number between {{min}} and {{max}}."
+  },
+  "courseList": {
+    "courses": "Courses",
+    "courses_desc": "Select which courses you want to keep synced and rename the folders",
+    "row": {
+      "tooShort": "The name cannot be empty",
+      "tooLong": "Max 255 characters!",
+      "invalidCharacters": "These characters cannot be used: ",
+      "errPerm": "Cannot rename the folder, you might have a file open inside of it"
+    }
+  },
+  "recordings": {
+    "title": "Recordings",
+    "description": "Download and transcribe lectures from your selected courses",
+    "recordingCount_one": "{{count}} recording",
+    "recordingCount_other": "{{count}} recordings",
+    "courseCount_one": "{{count}} lecture",
+    "courseCount_other": "{{count}} lectures",
+    "batch": {
+      "ready": "Ready",
+      "checking": "Checking for updates",
+      "downloading_one": "{{count}} download active",
+      "downloading_other": "{{count}} downloads active",
+      "transcribing_one": "{{count}} transcription active",
+      "transcribing_other": "{{count}} transcriptions active",
+      "queued_one": "{{count}} queued",
+      "queued_other": "{{count}} queued"
+    },
+    "syncNow": "Check now",
+    "syncing": "Checking...",
+    "manualLinkLabel": "WebEx recording link",
+    "manualLinkPlaceholder": "Paste a WebEx recording link",
+    "manualAdd": "Add recording",
+    "manualAdding": "Adding...",
+    "manualAdded": "Recording added",
+    "loading": "Loading...",
+    "noRecordings": "No recordings found yet. Select courses to sync, then check for recordings or add a WebEx link.",
+    "confirmDelete": "Delete the downloaded video for “{{title}}”? Transcripts and notes are kept.",
+    "downloading": "Downloading...",
+    "error": "Error",
+    "play": "Play",
+    "openFolder": "Open folder",
+    "delete": "Delete",
+    "downloadSelected": "Download selected",
+    "transcribeSelected": "Transcribe selected",
+    "cancel": "Cancel",
+    "selectHint": "Select one or more lectures",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "selectedCount_one": "{{count}} lecture selected",
+    "selectedCount_other": "{{count}} lectures selected",
+    "discoverySummary": "Checked {{activities}} activities in {{courses}} courses; {{newCount}} new recordings added.",
+    "status": {
+      "available": "Available",
+      "downloading": "Downloading",
+      "downloaded": "Downloaded",
+      "queued": "Queued",
+      "preparingTranscription": "Preparing transcription",
+      "transcribing": "Transcribing",
+      "processingMaterials": "Processing course materials",
+      "generatingNotes": "Generating notes",
+      "completed": "Completed",
+      "error": "Error",
+      "unsupported": "Unsupported"
+    },
+    "search": "Search lectures or courses",
+    "filter": "Filter recordings",
+    "sort": "Sort lectures",
+    "filters": {
+      "all": "All recordings",
+      "available": "To download",
+      "downloaded": "On this device",
+      "active": "In progress",
+      "completed": "Transcribed",
+      "error": "Needs attention"
+    },
+    "sorts": {
+      "newest": "Newest first",
+      "oldest": "Oldest first",
+      "title": "Title A–Z"
+    },
+    "showing": "Showing {{count}} of {{total}}",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "rescanAll": "Full rescan",
+    "rescanHelp": "Recheck all activities and archive links, including cached results. This can take longer.",
+    "noMatches": "No recordings match your search or filter.",
+    "unknownDate": "Date unavailable",
+    "selectRecording": "Select {{title}}",
+    "download": "Download",
+    "transcribe": "Transcribe",
+    "openNotes": "Open notes",
+    "openTranscript": "Open transcript",
+    "discoveryProgress": "{{completed}} of {{total}} courses checked · {{activities}} activities inspected",
+    "discoveryFailures_one": "1 link or course could not be checked — show details",
+    "discoveryFailures_other": "{{count}} links or courses could not be checked — show details"
+  },
+  "library": {
+    "navigation": "Library",
+    "files": "Course files",
+    "recordings": "Recordings",
+    "syncing": "Syncing"
   }
 }

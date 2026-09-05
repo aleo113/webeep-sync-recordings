@@ -10,6 +10,8 @@ import {
   checkForNewRecordings,
   getWebExStreamInfo,
   getWebExTicketCookie,
+  resolveWebExRecordingUrl,
+  RecordingDiscoveryProgress,
 } from "./recordings"
 import { createLogger } from "./logger"
 import {
@@ -17,6 +19,7 @@ import {
   RecordingCatalogItem,
   WebExRecording,
 } from "./recordings-types"
+import { extractVideoID } from "./recording-links"
 import { transcriberWorker, TranscriberWorkerEvent } from "./transcriber-worker"
 
 const { log, error } = createLogger("RecordingsManager")
@@ -32,12 +35,16 @@ function isFallbackRecordingTitle(title: string, recordingId: string): boolean {
 }
 
 function titleFromMediaPath(filePath: string): string | null {
-  const title = path.parse(filePath).name.trim()
+  const title = path
+    .parse(filePath)
+    .name.replace(/ \[[a-f0-9]{32}\]$/i, "")
+    .trim()
   return title && !/^[a-f0-9]{32}$/i.test(title) ? title : null
 }
 
 export class RecordingsManager extends EventEmitter {
   private syncing = false
+  private discoveryProgress: RecordingDiscoveryProgress | null = null
   private interval: NodeJS.Timeout | null = null
   private currentDownloads = new Map<string, { cancel: () => void }>()
   private transcriptionJobs = new Map<
@@ -111,17 +118,23 @@ export class RecordingsManager extends EventEmitter {
     this.interval = null
   }
 
-  async syncRecordings(): Promise<void> {
-    await this.discoverRecordings()
+  async syncRecordings(force = false): Promise<void> {
+    await this.discoverRecordings(force)
   }
 
-  async discoverRecordings(): Promise<void> {
-    if (this.syncing) return
+  async discoverRecordings(force = false): Promise<void> {
     await storeIsReady()
+    if (this.syncing) return
     this.syncing = true
     this.emit("sync-start")
     try {
-      const discovery = await checkForNewRecordings()
+      const discovery = await checkForNewRecordings({
+        force,
+        onProgress: progress => {
+          this.discoveryProgress = progress
+          this.emit("discovery-progress", progress)
+        },
+      })
       const discovered = discovery.recordings
       const catalog = this.getCatalog()
       let newCount = 0
@@ -173,6 +186,7 @@ export class RecordingsManager extends EventEmitter {
       throw err
     } finally {
       this.syncing = false
+      this.discoveryProgress = null
     }
   }
 
@@ -198,40 +212,26 @@ export class RecordingsManager extends EventEmitter {
 
   async addManualRecording(webexUrl: string): Promise<RecordingCatalogItem> {
     await storeIsReady()
-    const trimmedUrl = webexUrl.trim()
-    let parsedUrl: URL
-    try {
-      parsedUrl = new URL(trimmedUrl)
-    } catch {
-      throw new Error("Invalid recording link")
-    }
-    if (!parsedUrl.hostname.toLowerCase().endsWith("webex.com")) {
-      throw new Error("The link must be a WebEx recording link")
-    }
+    const trimmedUrl = await resolveWebExRecordingUrl(webexUrl.trim())
+    const recordingId = extractVideoID(trimmedUrl)!
 
-    const recordingId =
-      parsedUrl.pathname
-        .split("/")
-        .map(part => part.slice(0, 32))
-        .find(part => /^[a-f0-9]{32}$/i.test(part)) ||
-      parsedUrl.searchParams.get("RCID") ||
-      parsedUrl.searchParams.get("rcid")
-    if (!recordingId) {
-      throw new Error("Could not identify a recording in this link")
-    }
-
-    const streamInfo = await getWebExStreamInfo(trimmedUrl)
+    const streamInfo = await getWebExStreamInfo(trimmedUrl).catch(err => {
+      log(`Recording added without optional metadata: ${String(err)}`)
+      return null
+    })
     const catalog = this.getCatalog()
     const existing = catalog[recordingId]
     const item: RecordingCatalogItem = {
+      ...existing,
       recording: {
+        ...existing?.recording,
         recordingId,
         title:
           streamInfo?.title ||
           existing?.recording.title ||
           `Recording ${recordingId}`,
         webexUrl: trimmedUrl,
-        date: existing?.recording.date || new Date(),
+        date: existing?.recording.date || null,
         courseId: existing?.recording.courseId || 0,
         courseName: existing?.recording.courseName || "Manual recordings",
         downloaded: Boolean(existing?.recording.downloaded),
@@ -283,6 +283,7 @@ export class RecordingsManager extends EventEmitter {
         recording.title = titleFromMediaPath(filePath) || recording.title
       }
       item.status = "downloaded"
+      recording.downloaded = true
       item.filePath = filePath
       item.mediaRecordingId = recording.recordingId
       item.progress = 1
@@ -348,7 +349,10 @@ export class RecordingsManager extends EventEmitter {
         if (hasAriaResumeFile) {
           throw new Error("Downloader returned an incomplete media file.")
         }
-        const finalPath = path.join(courseDir, path.basename(downloadedPath))
+        const finalPath = path.join(
+          courseDir,
+          `${path.parse(downloadedPath).name} [${recording.recordingId}]${path.extname(downloadedPath)}`,
+        )
         await fs.rename(downloadedPath, finalPath)
         onProgress(1)
         return finalPath
@@ -363,7 +367,10 @@ export class RecordingsManager extends EventEmitter {
     const streamInfo = await getWebExStreamInfo(recording.webexUrl)
     if (!streamInfo) throw new Error("Failed to get WebEx stream information.")
     const safeTitle = recording.title.replace(/[/\\?%*:;|"<>]/g, "-")
-    const filePath = path.join(courseDir, `${safeTitle}.mp4`)
+    const filePath = path.join(
+      courseDir,
+      `${safeTitle} [${recording.recordingId}].mp4`,
+    )
     const partialPath = `${filePath}.part`
 
     const controller = new AbortController()
@@ -602,14 +609,27 @@ export class RecordingsManager extends EventEmitter {
 
   async deleteRecording(recordingId: string): Promise<boolean> {
     const catalogItem = this.getCatalog()[recordingId]
+    if (
+      catalogItem &&
+      ["downloading", "queued", "transcribing"].includes(catalogItem.status)
+    ) {
+      throw new Error("Cancel the active job before deleting this recording.")
+    }
     const downloaded = this.getDownloadedRecordings()[recordingId]
     const filePath = catalogItem?.filePath || downloaded?.filePath
-    if (filePath) await fs.unlink(filePath).catch(() => {})
+    if (filePath)
+      await fs.unlink(filePath).catch(err => {
+        if (err.code !== "ENOENT") throw err
+      })
     delete this.getDownloadedRecordings()[recordingId]
     if (catalogItem) {
       catalogItem.filePath = undefined
       catalogItem.status = "available"
       catalogItem.progress = undefined
+      catalogItem.mediaRecordingId = undefined
+      catalogItem.transcriptionStage = undefined
+      catalogItem.error = undefined
+      catalogItem.recording.downloaded = false
     }
     await store.write()
     if (catalogItem) this.emitItem(catalogItem)
@@ -624,8 +644,11 @@ export class RecordingsManager extends EventEmitter {
     if (filePath) await shell.openPath(filePath)
   }
 
-  getSyncState(): { syncing: boolean } {
-    return { syncing: this.syncing }
+  getSyncState(): {
+    syncing: boolean
+    progress: RecordingDiscoveryProgress | null
+  } {
+    return { syncing: this.syncing, progress: this.discoveryProgress }
   }
 }
 

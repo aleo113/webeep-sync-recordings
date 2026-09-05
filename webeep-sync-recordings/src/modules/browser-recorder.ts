@@ -95,16 +95,23 @@ export class RecordingBrowser {
         event: Electron.Event,
         errorCode: number,
         errorDescription: string,
+        _validatedURL: string,
+        isMainFrame: boolean,
       ) => {
+        if (isMainFrame === false || errorCode === -3) return
         cleanup()
         reject(new Error(`Load failed: ${errorCode} ${errorDescription}`))
       }
 
       webContents.once("did-finish-load", loadHandler)
-      webContents.once("did-fail-load", failHandler)
+      webContents.on("did-fail-load", failHandler)
 
       debug(`Navigating to: ${url}`)
-      win.loadURL(url)
+      win.loadURL(url).catch(err => {
+        if (err.code === "ERR_ABORTED" || err.errno === -3) return
+        cleanup()
+        reject(err)
+      })
     })
   }
 
@@ -119,6 +126,7 @@ export class RecordingBrowser {
     }
     win.webContents.on("did-navigate", collect)
     win.webContents.on("did-navigate-in-page", collect)
+    win.webContents.on("will-redirect", collect)
     try {
       await this.navigateAndWait(url)
       await new Promise(resolve => setTimeout(resolve, settleMs))
@@ -126,6 +134,7 @@ export class RecordingBrowser {
     } finally {
       win.webContents.removeListener("did-navigate", collect)
       win.webContents.removeListener("did-navigate-in-page", collect)
+      win.webContents.removeListener("will-redirect", collect)
     }
   }
 
@@ -147,7 +156,12 @@ export class RecordingBrowser {
     }
     win.webContents.on("did-navigate", collect)
     win.webContents.on("did-navigate-in-page", collect)
+    win.webContents.on("will-redirect", collect)
 
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      urls.push(url)
+      return { action: "deny" }
+    })
     try {
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(
@@ -158,14 +172,19 @@ export class RecordingBrowser {
           clearTimeout(timer)
           resolve()
         })
-        win.webContents.once(
+        win.webContents.on(
           "did-fail-load",
-          (_event, errorCode, errorDescription) => {
+          (_event, errorCode, errorDescription, _validatedURL, isMainFrame) => {
+            if (isMainFrame === false || errorCode === -3) return
             clearTimeout(timer)
             reject(new Error(`Load failed: ${errorCode} ${errorDescription}`))
           },
         )
-        win.loadURL(url)
+        win.loadURL(url).catch(err => {
+          if (err.code === "ERR_ABORTED" || err.errno === -3) return
+          clearTimeout(timer)
+          reject(err)
+        })
       })
       await new Promise(resolve => setTimeout(resolve, settleMs))
       return {

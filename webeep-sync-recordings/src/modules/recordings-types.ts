@@ -12,7 +12,7 @@ export interface WebExRecording {
   recmanUrl?: string
   sourceModuleId?: number
   sourceUrl?: string
-  date: Date
+  date: Date | string | null
   courseId: number
   courseName: string
   downloaded: boolean

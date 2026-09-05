@@ -1,3 +1,5 @@
+> For the combined app and Transcriber, use the [repository setup guide](../README.md). Release links below describe the original upstream app.
+
 <div align="center">
     <img src="./.github/resources/title.svg" width="512" />
 </div>
@@ -104,32 +106,18 @@ e dovrebbe tutto funzionare senza problemi
 
 ### Installazione manuale (istruzioni di compilazione)
 
-Prerequisiti:
-
--   [git](https://git-scm.com)
--   [NodeJS](https://nodejs.org) (v18, consigliata fortemente l'installazione via
-    [nvm](https://github.com/nvm-sh/nvm))
--   [Yarn](https://yarnpkg.com/getting-started/install)
-
-Per prima cosa scarica l'app
+Segui la [guida alla configurazione del repository](../README.md) per installare anche Transcriber e PoliWebex. Dalla radice del repository:
 
 ```sh
-# clona la repository
-git clone https://github.com/toto04/webeep-sync && cd webeep-sync
-# installa le dependencies
-yarn
+python3 scripts/workspace.py setup
+python3 scripts/workspace.py start
 ```
 
-e questo è tutto, l'app può essere avviata via linea di comando con
+Per creare il pacchetto Electron:
 
 ```sh
-yarn start
-```
-
-oppure puoi creare un package per installarla con
-
-```sh
-yarn make
+cd webeep-sync-recordings
+pnpm make
 ```
 
 Per maggiori informazioni, dai un'occhiata agli script in `package.json` e alla documentazione
@@ -250,32 +238,18 @@ and everything should work without problems
 
 ### Manual installation (compile instructions)
 
-Prerequisites:
-
--   [git](https://git-scm.com)
--   [NodeJS](https://nodejs.org) (v18, I strongly recommend to install it via
-    [nvm](https://github.com/nvm-sh/nvm))
--   [Yarn](https://yarnpkg.com/getting-started/install)
-
-First of all, download the app
+Follow the [repository setup guide](../README.md) to install Transcriber and PoliWebex as well. From the repository root:
 
 ```sh
-# clone the repository
-git clone https://github.com/toto04/webeep-sync && cd webeep-sync
-# install dependencies
-yarn
+python3 scripts/workspace.py setup
+python3 scripts/workspace.py start
 ```
 
-and that's it, the app can be launched from command line using
+To build the Electron package:
 
 ```sh
-yarn start
-```
-
-or if you prefer, you can create a package for installation with
-
-```sh
-yarn make
+cd webeep-sync-recordings
+pnpm make
 ```
 
 For more information, have a look at the scripts in `package.json` and the documentation of the

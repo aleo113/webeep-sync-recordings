@@ -68,7 +68,10 @@ def from_env(
 ) -> AppConfig:
     env_path = explicit_poliwebex_path or os.getenv("POLIWEBEX_PATH", "") or _read_env_file_value("POLIWEBEX_PATH")
     if not env_path:
-        raise ValueError("PoliWebex path is required. Pass --poliwebex-path or set POLIWEBEX_PATH.")
+        bundled_path = Path(__file__).resolve().parent.parent / "PoliWebex"
+        if not (bundled_path / "poliwebex.js").is_file():
+            raise ValueError("PoliWebex path is required. Pass --poliwebex-path or set POLIWEBEX_PATH.")
+        env_path = str(bundled_path)
 
     whisper_model = os.getenv("WHISPER_MODEL", "small")
     raw_whisper_language = (

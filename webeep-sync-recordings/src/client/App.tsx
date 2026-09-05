@@ -8,7 +8,11 @@ import {
   IoSquareOutline,
 } from "react-icons/io5"
 import i18next from "i18next"
-import { I18nextProvider, initReactI18next } from "react-i18next"
+import {
+  I18nextProvider,
+  initReactI18next,
+  useTranslation,
+} from "react-i18next"
 
 import "./index.scss"
 
@@ -28,6 +32,8 @@ const shouldDisplayWindowsControls = platform() === "win32"
 i18next.use(initReactI18next).init({ fallbackLng: "en" })
 
 const App: FC = () => {
+  const { t } = useTranslation("client", { keyPrefix: "library" })
+  const [library, setLibrary] = useState<"files" | "recordings">("files")
   const [setting, setSetting] = useState(false)
 
   const [isLogged, setLogged] = useState(false)
@@ -107,10 +113,36 @@ const App: FC = () => {
             }}
             onSettings={() => setSetting(true)}
           />
-          <SyncSettings />
-          <SyncProgress />
-          {isLogged && courses ? <CourseList courses={courses} /> : undefined}
-          {isLogged ? <RecordingsView /> : undefined}
+          {isLogged && (
+            <nav className="library-nav section" aria-label={t("navigation")}>
+              <button
+                aria-pressed={library === "files"}
+                onClick={() => setLibrary("files")}
+              >
+                {t("files")}
+                {syncing ? ` · ${t("syncing")}` : ""}
+              </button>
+              <button
+                aria-pressed={library === "recordings"}
+                onClick={() => setLibrary("recordings")}
+              >
+                {t("recordings")}
+              </button>
+            </nav>
+          )}
+          <div
+            className="library-panel"
+            hidden={isLogged && library !== "files"}
+          >
+            <SyncSettings />
+            <SyncProgress />
+            {isLogged && courses ? <CourseList courses={courses} /> : undefined}
+          </div>
+          {isLogged && (
+            <div className="library-panel" hidden={library !== "recordings"}>
+              <RecordingsView />
+            </div>
+          )}
           {setting ? (
             <SettingsModal
               onClose={() => {
