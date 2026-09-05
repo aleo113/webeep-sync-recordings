@@ -46,6 +46,8 @@ python3 scripts/workspace.py check
 
 This runs the Python tests, checks the installed worker import, and runs the desktop linter, TypeScript checks and recording tests. The commands work from another directory when given the absolute path to `scripts/workspace.py`.
 
+See the [repository review](docs/repository-review.md) for the fixes, verification results and remaining live-service/platform checks.
+
 For the standalone CLI:
 
 ```sh
