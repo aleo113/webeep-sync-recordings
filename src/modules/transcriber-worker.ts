@@ -6,6 +6,7 @@ import fs from "fs"
 import path from "path"
 import { app } from "electron"
 import { store, storeIsReady } from "./store"
+import { SPIDCredentials } from "./recordings-types"
 
 export interface TranscriberJobRequest {
   recordingId: string
@@ -19,6 +20,7 @@ export interface TranscriberJobRequest {
 export interface TranscriberDownloadRequest {
   url: string
   outputDir: string
+  spidCredentials?: SPIDCredentials | null
   onJobId?: (jobId: string) => void
 }
 
@@ -51,6 +53,13 @@ export class TranscriberWorker extends EventEmitter {
       whisper_model: store.data.settings.transcriberWhisperModel,
       whisper_num_cores: store.data.settings.transcriberWhisperNumCores,
       notes_mode: store.data.settings.transcriberNotesMode,
+      notes_provider: store.data.settings.transcriberNotesProvider,
+      // A cleared model field must not reach the worker as "": undefined keys
+      // are dropped by JSON.stringify and the worker falls back to its default.
+      codex_model:
+        store.data.settings.transcriberCodexModel?.trim() || undefined,
+      claude_model:
+        store.data.settings.transcriberClaudeModel?.trim() || undefined,
     })
     return jobId
   }
@@ -84,6 +93,11 @@ export class TranscriberWorker extends EventEmitter {
           ? bundledPoliwebex
           : store.data.settings.transcriberPoliwebexPath,
         skip_keyring: false,
+        // PoliWebex prompts on stdin (a closed pipe here) when it has no
+        // saved credentials: forward the ones stored in the app instead.
+        spid_username: request.spidCredentials?.username || undefined,
+        spid_password: request.spidCredentials?.password || undefined,
+        polimi_email: request.spidCredentials?.polimiEmail || undefined,
       })
     })
   }
@@ -107,7 +121,7 @@ export class TranscriberWorker extends EventEmitter {
     const args =
       executable === bundledWorker ? [] : ["-m", "transcriber.worker"]
     const child = spawn(executable, args, {
-      env: process.env,
+      env: this.workerEnv(),
       stdio: ["pipe", "pipe", "pipe"],
     })
     this.jobs.set(jobId, child)
@@ -152,16 +166,66 @@ export class TranscriberWorker extends EventEmitter {
           type: "error",
           job_id: jobId,
           code: signal === "SIGTERM" ? "CANCELLED" : "WORKER_EXITED",
+          // Cancellation must win over stderr: Python always emits harmless
+          // import warnings there, which used to mask the real close reason.
           message:
-            stderr ||
-            (signal === "SIGTERM"
+            signal === "SIGTERM"
               ? "Transcriber worker was cancelled."
-              : `Transcriber worker exited without returning a result (code ${code ?? "unknown"}${signal ? `, signal ${signal}` : ""}).`),
+              : stderr ||
+                `Transcriber worker exited without returning a result (code ${code ?? "unknown"}${signal ? `, signal ${signal}` : ""}).`,
         } satisfies TranscriberWorkerEvent)
       }
     })
 
     child.stdin.end(`${JSON.stringify(command)}\n`)
+  }
+
+  private workerEnv(): NodeJS.ProcessEnv {
+    if (process.platform !== "darwin") return process.env
+    // GUI-launched macOS apps get a minimal PATH without Homebrew or nvm, so
+    // the worker (and PoliWebex under it) would not find ffmpeg/aria2c/node.
+    const env: NodeJS.ProcessEnv = { ...process.env }
+    const extraPaths: string[] = []
+    // The nvm node dir must come before /usr/local/bin, where a stale
+    // .pkg-installed node would otherwise shadow it.
+    const nvmNode = this.latestNvmNodeBinDir()
+    if (nvmNode) extraPaths.push(nvmNode)
+    extraPaths.push(
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      // claude/codex CLI default install locations
+      path.join(app.getPath("home"), ".local", "bin"),
+    )
+    env.PATH = [env.PATH, ...extraPaths].filter(Boolean).join(":")
+    // A stale Hugging Face token in ~/.cache/huggingface makes even public
+    // Whisper model downloads fail with 401; the models we pull are public.
+    if (env.HF_HUB_DISABLE_IMPLICIT_TOKEN === undefined) {
+      env.HF_HUB_DISABLE_IMPLICIT_TOKEN = "1"
+    }
+    return env
+  }
+
+  private latestNvmNodeBinDir(): string | null {
+    const versionsDir = path.join(
+      app.getPath("home"),
+      ".nvm",
+      "versions",
+      "node",
+    )
+    try {
+      const versions = fs
+        .readdirSync(versionsDir)
+        .filter(v => /^v\d+\.\d+\.\d+$/.test(v))
+        .sort((a, b) => {
+          const pa = a.slice(1).split(".").map(Number)
+          const pb = b.slice(1).split(".").map(Number)
+          return pa[0] - pb[0] || pa[1] - pb[1] || pa[2] - pb[2]
+        })
+      const latest = versions.at(-1)
+      return latest ? path.join(versionsDir, latest, "bin") : null
+    } catch {
+      return null
+    }
   }
 
   private runtimePath(relativePath: string): string {

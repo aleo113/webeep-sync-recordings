@@ -6,7 +6,9 @@ import got from "got"
 import { createWriteStream } from "fs"
 import { store, storeIsReady } from "./store"
 import { loginManager } from "./login"
+import { credentialsManager } from "./credentials"
 import {
+  browserSessionNeedsLogin,
   checkForNewRecordings,
   getWebExStreamInfo,
   getWebExTicketCookie,
@@ -121,6 +123,18 @@ export class RecordingsManager extends EventEmitter {
     this.syncing = true
     this.emit("sync-start")
     try {
+      // The Moodle token alone is not enough here: discovery drives the
+      // hidden browser through WeBeep, which needs live SSO cookies. When the
+      // session has expired, prompt the interactive login before scanning.
+      if (await browserSessionNeedsLogin()) {
+        log("Browser session expired; requesting interactive login")
+        const loggedIn = await loginManager.createLoginWindow()
+        if (!loggedIn) {
+          throw new Error(
+            "Login WeBeep richiesto: completa l'accesso per cercare le registrazioni.",
+          )
+        }
+      }
       const discovery = await checkForNewRecordings()
       const discovered = discovery.recordings
       const catalog = this.getCatalog()
@@ -326,6 +340,7 @@ export class RecordingsManager extends EventEmitter {
           // output directory. A fresh directory prevents a failed download
           // from being mistaken for a different, pre-existing recording.
           outputDir: attemptDir,
+          spidCredentials: await credentialsManager.load(),
           onJobId: jobId =>
             this.currentDownloads.set(recording.recordingId, {
               cancel: () => transcriberWorker.cancel(jobId),

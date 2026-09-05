@@ -389,6 +389,57 @@ export const SettingsModal: FC<{ onClose: () => void }> = props => {
                 <option value="api">{t("generatedNotes")}</option>
               </select>
             </div>
+            {settings.transcriberNotesMode === "api" ? (
+              <>
+                <div className="setting">
+                  <span>{t("transcriberNotesProvider")}</span>
+                  <select
+                    value={settings.transcriberNotesProvider}
+                    onChange={e =>
+                      updateSettigns({
+                        ...settings,
+                        transcriberNotesProvider: e.target.value as
+                          | "codex"
+                          | "claude",
+                      })
+                    }
+                  >
+                    <option value="codex">Codex (ChatGPT)</option>
+                    <option value="claude">Claude</option>
+                  </select>
+                  <span className="desc">
+                    {t("transcriberNotesProvider_desc")}
+                  </span>
+                </div>
+                <div className="setting">
+                  <span>{t("transcriberNotesModel")}</span>
+                  <input
+                    type="text"
+                    value={
+                      settings.transcriberNotesProvider === "claude"
+                        ? settings.transcriberClaudeModel
+                        : settings.transcriberCodexModel
+                    }
+                    onChange={e =>
+                      updateSettigns(
+                        settings.transcriberNotesProvider === "claude"
+                          ? {
+                              ...settings,
+                              transcriberClaudeModel: e.target.value,
+                            }
+                          : {
+                              ...settings,
+                              transcriberCodexModel: e.target.value,
+                            },
+                      )
+                    }
+                  />
+                  <span className="desc">
+                    {t("transcriberNotesModel_desc")}
+                  </span>
+                </div>
+              </>
+            ) : undefined}
           </div>
 
           <button

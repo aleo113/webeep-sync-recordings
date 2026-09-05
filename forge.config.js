@@ -3,26 +3,39 @@ const path = require("path")
 require("dotenv").config()
 const AdmZip = require("adm-zip")
 
+// Signing and notarization only happen when the credentials are provided via
+// environment (or .env): personal/unsigned builds skip both, and the resulting
+// app just needs `xattr -rd com.apple.quarantine` after install.
+const shouldSign = !!process.env.MACOS_IDENTITY
+const hasNotarizeCreds = !!(
+  process.env.APPLEID &&
+  process.env.APPLEPWD &&
+  process.env.TEAMID
+)
+const shouldNotarize = shouldSign && hasNotarizeCreds
+
 module.exports = {
   packagerConfig: {
     icon: path.resolve(__dirname, "static/icons/icon"),
     appBundleId: "org.polinetwork.webeep-sync",
-    osxSign: {
-      identity:
-        process.env.MACOS_IDENTITY ||
-        "Developer ID Application: PoliNetwork APS (842636PS9J)",
-      "hardened-runtime": true,
-      entitlements: "entitlements.plist",
-      "entitlements-inherit": "entitlements.plist",
-      "signature-flags": "library",
-      "gatekeeper-assess": false,
-    },
-    osxNotarize: {
-      appleId: process.env.APPLEID,
-      appleIdPassword: process.env.APPLEPWD,
-      teamId: process.env.TEAMID,
-      ascProvider: process.env.TEAMID,
-    },
+    ...(shouldSign && {
+      osxSign: {
+        identity: process.env.MACOS_IDENTITY,
+        "hardened-runtime": true,
+        entitlements: "entitlements.plist",
+        "entitlements-inherit": "entitlements.plist",
+        "signature-flags": "library",
+        "gatekeeper-assess": false,
+      },
+    }),
+    ...(shouldNotarize && {
+      osxNotarize: {
+        appleId: process.env.APPLEID,
+        appleIdPassword: process.env.APPLEPWD,
+        teamId: process.env.TEAMID,
+        ascProvider: process.env.TEAMID,
+      },
+    }),
   },
   makers: [
     {
@@ -42,7 +55,8 @@ module.exports = {
       name: "@electron-forge/maker-dmg",
       config: arch => {
         return {
-          name: `WeBeep Sync macOS-${arch}`,
+          // appdmg volume names are limited to 27 characters
+          name: `WeBeep Sync Rec ${arch}`,
           format: "ULFO",
           overwrite: true,
           background: path.resolve(__dirname, "static/dmg/bg@2x.png"),
@@ -51,7 +65,7 @@ module.exports = {
             {
               path: path.resolve(
                 __dirname,
-                `out/WeBeep Sync-darwin-${arch}/WeBeep Sync.app`
+                `out/WeBeep Sync Recordings-darwin-${arch}/WeBeep Sync Recordings.app`,
               ),
               type: "file",
               x: 120,
@@ -155,6 +169,21 @@ module.exports = {
     },
   ],
   hooks: {
+    prePackage: (_config, platform) => {
+      // Notarizing an unsigned app fails late at the Apple notary stage, so
+      // fail fast when packaging for macOS (upstream CI sets only the
+      // notarize vars and relied on a hardcoded signing identity this config
+      // no longer has). Other platforms and `start` never sign, so the
+      // mismatch is harmless there.
+      if (platform === "darwin" && hasNotarizeCreds && !shouldSign) {
+        throw new Error(
+          "APPLEID/APPLEPWD/TEAMID are set but MACOS_IDENTITY is not: " +
+            "notarization requires a Developer ID-signed app. Set " +
+            "MACOS_IDENTITY or unset the notarization variables for an " +
+            "unsigned local build.",
+        )
+      }
+    },
     postMake: (_config, makeResults) => {
       // this hook is here to zip the .exe installer, because windows doesnt trust when you
       // download an unsigned .exe from the internet, but it's ok if you unzip it first
@@ -183,7 +212,7 @@ module.exports = {
             if (art.endsWith(".deb")) {
               const newName = path.resolve(
                 path.dirname(art),
-                "webeep-sync-debian.deb"
+                "webeep-sync-debian.deb",
               )
               console.log(`Renaming ${art} to ${newName}`)
               fs.renameSync(art, newName)
@@ -192,7 +221,7 @@ module.exports = {
             if (art.endsWith(".rpm")) {
               const newName = path.resolve(
                 path.dirname(art),
-                "webeep-sync-redhat.rpm"
+                "webeep-sync-redhat.rpm",
               )
               console.log(`Renaming ${art} to ${newName}`)
               fs.renameSync(art, newName)
