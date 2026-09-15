@@ -21,7 +21,7 @@ import {
   RecordingCatalogItem,
   WebExRecording,
 } from "./recordings-types"
-import { extractVideoID } from "./recording-links"
+import { extractVideoID, isWebExMeetingUrl } from "./recording-links"
 import { transcriberWorker, TranscriberWorkerEvent } from "./transcriber-worker"
 
 const { log, error } = createLogger("RecordingsManager")
@@ -210,7 +210,17 @@ export class RecordingsManager extends EventEmitter {
       store.data.persistence.recordingCatalog = {}
     }
     const catalog = store.data.persistence.recordingCatalog
-    for (const item of Object.values(catalog)) {
+    for (const [id, item] of Object.entries(catalog)) {
+      if (
+        isWebExMeetingUrl(item.recording.webexUrl) &&
+        ["available", "error", "unsupported"].includes(item.status) &&
+        !item.filePath &&
+        !item.transcriptPath &&
+        !item.notesPath
+      ) {
+        delete catalog[id]
+        continue
+      }
       if (
         item.filePath &&
         isFallbackRecordingTitle(

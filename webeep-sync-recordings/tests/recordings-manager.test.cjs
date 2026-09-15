@@ -45,3 +45,18 @@ test('deleting video retains notes and transcript references', async () => {
   assert.equal(item.notesPath, '/notes.md')
   assert.equal(item.recording.downloaded, false)
 })
+test('removes falsely discovered meeting entries without deleting local artifacts', () => {
+  const meeting = 'https://politecnicomilano.webex.com/wbxmjs/joinservice/sites/politecnicomilano/meeting/download/' + id
+  const item = recording('available')
+  item.recording.webexUrl = meeting
+  delete item.filePath
+  delete item.notesPath
+  delete item.transcriptPath
+  const { manager, unlink } = managerWith(item)
+  assert.equal(manager.getCatalog()[id], undefined)
+  assert.deepEqual(unlink, [])
+
+  const retained = recording()
+  retained.recording.webexUrl = meeting
+  assert.equal(managerWith(retained).manager.getCatalog()[id], retained)
+})

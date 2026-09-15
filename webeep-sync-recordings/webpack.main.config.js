@@ -14,6 +14,9 @@ module.exports = {
         rules: require("./webpack.rules"),
     },
     resolve: {
+        // Match the CommonJS imports emitted by ts-loader. The backend's ESM
+        // entry uses top-level await and cannot be consumed by those imports.
+        alias: { "i18next-fs-backend$": require.resolve("i18next-fs-backend") },
         extensions: [".js", ".ts", ".jsx", ".tsx", ".css", ".json", "scss"],
     },
     plugins: [

@@ -54,10 +54,13 @@ export class RecordingBrowser {
     const webContents = win.webContents
 
     return new Promise((resolve, reject) => {
+      let settleTimer: NodeJS.Timeout | undefined
       const cleanup = () => {
         clearTimeout(timer)
+        clearTimeout(settleTimer)
         webContents.removeListener("did-finish-load", loadHandler)
         webContents.removeListener("did-fail-load", failHandler)
+        webContents.removeListener("did-start-navigation", navigationHandler)
       }
 
       const timer = setTimeout(() => {
@@ -65,7 +68,7 @@ export class RecordingBrowser {
         reject(new Error(`Navigation timeout after ${timeout}ms for ${url}`))
       }, timeout)
 
-      const loadHandler = () => {
+      const finishNavigation = () => {
         cleanup()
         debug(`Finished load for: ${url}`)
         if (waitForSelector) {
@@ -91,6 +94,21 @@ export class RecordingBrowser {
         }
       }
 
+      // Polimi SSO pages can finish loading before submitting the next redirect.
+      // Wait for a quiet load and restart the wait on main-frame navigation.
+      const navigationHandler = (
+        _event: Electron.Event,
+        _url: string,
+        isInPlace: boolean,
+        isMainFrame: boolean,
+      ) => {
+        if (isMainFrame && !isInPlace) clearTimeout(settleTimer)
+      }
+      const loadHandler = () => {
+        clearTimeout(settleTimer)
+        settleTimer = setTimeout(finishNavigation, 1200)
+      }
+
       const failHandler = (
         event: Electron.Event,
         errorCode: number,
@@ -103,8 +121,9 @@ export class RecordingBrowser {
         reject(new Error(`Load failed: ${errorCode} ${errorDescription}`))
       }
 
-      webContents.once("did-finish-load", loadHandler)
+      webContents.on("did-finish-load", loadHandler)
       webContents.on("did-fail-load", failHandler)
+      webContents.on("did-start-navigation", navigationHandler)
 
       debug(`Navigating to: ${url}`)
       win.loadURL(url).catch(err => {

@@ -13,7 +13,7 @@ function fixture({ rows = [], pages, modules = [], cached = {}, navigate, archiv
     async executeScript() {
       const page = pages?.[active]
       if (page instanceof Error) throw page
-      return page || { rows, html: '', url: active, pageLinks: [], frames: [], login: false, archive: true }
+      return page || { rows, links: [], html: '', url: active, pageLinks: [], frames: [], login: false, archive: true }
     },
     async navigateInTemporaryWindow(value) {
       visits.push(value)
@@ -85,4 +85,107 @@ test('full rescan bypasses recent negative cache entries', async () => {
   const { api } = fixture({ modules: [moduleFor(1, source), archiveModule], cached: { '1:1': { sourceUrl: source, resolvedUrl: source, kind: 'unsupported', checkedAt: Date.now() } }, navigate: async () => ({ urls: [url(ids[0])], finalUrl: url(ids[0]), html: '' }) })
   const result = await api.checkForNewRecordings({ force: true })
   assert.equal(result.recordings.length, 1)
+})
+
+test('cached archive activities follow the current RecMan entry link', async () => {
+  const source = 'https://webeep.polimi.it/mod/url/view.php?id=10'
+  const entry = 'https://onlineservices.polimi.it/recman_frontend/recman_frontend/controller/UserListActivity.do?jaf_currentWFID=fresh'
+  const { api, visits } = fixture({
+    modules: [moduleFor(10, source, 'Archivio registrazioni')],
+    cached: { '1:10': { sourceUrl: source, resolvedUrl: archive, kind: 'archive', checkedAt: Date.now() } },
+    pages: {
+      [source]: { rows: [{ href: entry }], html: '', url: source, pageLinks: [], frames: [], login: false, archive: false },
+      [entry]: { rows: [{ href: url(ids[0]), title: 'Lecture' }], html: '', url: entry, pageLinks: [], frames: [], login: false, archive: true },
+    },
+  })
+  const result = await api.checkForNewRecordings()
+  assert.deepEqual(result.failures, [])
+  assert.equal(result.recordings.length, 1)
+  assert.deepEqual(visits, [source, entry])
+})
+
+test('expired RecMan workflows report session expiry and stay retryable', async () => {
+  const { api, data } = fixture({ modules: [archiveModule], pages: {
+    [archive]: { rows: [], pageLinks: [], frames: [], url: archive, login: false, archive: false,
+      html: "<html><body><a href='https://aunicalogin.polimi.it/aunicalogin/sessioneterminata.jsp?source_c_app=24670'>Errore interno, fai click per effettuare il logout e ricominciare</a></body></html>" },
+  } })
+  const result = await api.checkForNewRecordings()
+  assert.equal(result.failures.length, 1)
+  assert.match(result.failures[0], /session.*expired/i)
+  assert.equal(data.persistence.recordingDiscoveryState.modules['1:10'], undefined)
+})
+
+test('renews an expired workflow through the current WeBeep course archive link', async () => {
+  const course = 'https://webeep.polimi.it/course/view.php?id=1'
+  const entry = 'https://onlineservices.polimi.it/recman_frontend/entry'
+  const { api, visits } = fixture({ modules: [archiveModule], pages: {
+    [archive]: { rows: [], pageLinks: [], frames: [], url: archive, login: false, archive: false,
+      html: "<a href='https://aunicalogin.polimi.it/aunicalogin/sessioneterminata.jsp'>Errore interno</a>" },
+    [course]: { login: false, url: course, links: [{ href: entry, text: 'Archivio registrazioni', onclick: '' }] },
+    [entry]: { rows: [{ href: url(ids[0]), title: 'Lecture' }], pageLinks: [], frames: [], url: entry, html: '', login: false, archive: true },
+  } })
+  const result = await api.checkForNewRecordings()
+  assert.deepEqual(result.failures, [])
+  assert.equal(result.recordings.length, 1)
+  assert.deepEqual(visits, [archive, course, entry])
+})
+
+test('a first scan of the Distributed Systems archive retains pagination and archive classification', async () => {
+  const source = 'https://webeep.polimi.it/mod/url/view.php?id=463069'
+  const recording = 'https://politecnicomilano.webex.com/recordingservice/sites/politecnicomilano/recording/daebce95c96b49e99b9b2fe42df2b8c8/playback'
+  const next = archive + '?page=2'
+  const { api, data, visits } = fixture({
+    modules: [moduleFor(463069, source, 'Archivio registrazioni')],
+    navigate: async () => ({ urls: [archive], finalUrl: archive, html: `<a href="${recording}">Lecture</a>` }),
+    pages: {
+      [source]: { rows: [{ href: recording, title: 'Lecture 1' }], html: '', url: archive, pageLinks: [next], frames: [], login: false, archive: true },
+      [next]: { rows: [{ href: url(ids[0]), title: 'Lecture 2' }], html: '', url: next, pageLinks: [], frames: [], login: false, archive: true },
+    },
+  })
+  const result = await api.checkForNewRecordings()
+  assert.deepEqual(result.failures, [])
+  assert.deepEqual(result.recordings.map(item => item.webexUrl), [recording, url(ids[0])])
+  assert.equal(data.persistence.recordingDiscoveryState.modules['1:463069'].kind, 'archive')
+  assert.deepEqual(visits, [source, next])
+})
+
+test('two meeting rooms before the archive do not get opened or reused as recordings', async () => {
+  const source = 'https://webeep.polimi.it/mod/url/view.php?id=463069'
+  const first = 'https://politecnicomilano.webex.com/meet/gianpaolo.cugola'
+  const second = 'https://politecnicomilano.webex.com/meet/alessandro.margara'
+  const { api, visits } = fixture({
+    modules: [moduleFor(463068, first), moduleFor(463070, second), moduleFor(463069, source, 'Archivio registrazioni')],
+    cached: { '1:463068': { sourceUrl: first, resolvedUrl: `https://politecnicomilano.webex.com/wbxmjs/joinservice/sites/politecnicomilano/meeting/download/${ids[1]}`, kind: 'webex', checkedAt: Date.now() } },
+    rows: [{ href: url(ids[0]), title: 'Lecture' }],
+  })
+  const result = await api.checkForNewRecordings()
+  assert.deepEqual(result.failures, [])
+  assert.deepEqual(result.recordings.map(item => item.webexUrl), [url(ids[0])])
+  assert.equal(result.unsupportedActivities, 2)
+  assert.deepEqual(visits, [source])
+})
+
+test('course lookup prefers the named archive over earlier generic Polimi service links', async () => {
+  const course = 'https://webeep.polimi.it/course/view.php?id=1'
+  const source = 'https://webeep.polimi.it/mod/url/view.php?id=463069'
+  const { api } = fixture({ pages: { [course]: { url: course, login: false, links: [
+    { text: 'Online services', href: 'https://aunicalogin.polimi.it/aunicalogin/getservizio.xml?id_servizio=1' },
+    { text: 'Meeting room', href: 'https://politecnicomilano.webex.com/meet/gianpaolo.cugola' },
+    { text: 'Archivio registrazioni', href: source },
+  ] } } })
+  assert.equal(await api.getAunicaUrlFromWebeep(1), source)
+})
+
+test('the archive launch page ignores generic service links before the labelled archive', async () => {
+  const source = 'https://webeep.polimi.it/mod/url/view.php?id=463069'
+  const unrelated = 'https://aunicalogin.polimi.it/aunicalogin/getservizio.xml?id_servizio=2292'
+  const entry = 'https://aunicalogin.polimi.it/aunicalogin/getservizio.xml?id_servizio=2294&c_classe_webeep=888574-STD'
+  const { api, visits } = fixture({ pages: {
+    [source]: { rows: [{ href: unrelated, text: 'Online services' }, { href: entry, text: 'Recordings archive' }, { href: unrelated, text: 'Online services' }], html: '', url: source, pageLinks: [], frames: [], login: false, archive: false },
+    [unrelated]: new Error('This service is not the recording archive'),
+    [entry]: { rows: [{ href: url(ids[0]), title: 'Lecture' }], html: '', url: archive, pageLinks: [], frames: [], login: false, archive: true },
+  } })
+  const result = await api.extractWebExUrlsFromRecMan(source)
+  assert.deepEqual(result.map(item => item.webexUrl), [url(ids[0])])
+  assert.deepEqual(visits, [source, entry])
 })

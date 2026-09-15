@@ -42,7 +42,7 @@ export function isWebExUrl(value: string): boolean {
 }
 
 export function extractVideoID(value: string): string | null {
-  if (!isWebExUrl(value)) return null
+  if (!isWebExUrl(value) || isWebExMeetingUrl(value)) return null
   const url = new URL(normalizeRecordingUrl(value)!)
   for (const part of url.pathname.split("/")) {
     if (/^[a-f0-9]{32}$/i.test(part)) return part.toLowerCase()
@@ -52,6 +52,15 @@ export function extractVideoID(value: string): string | null {
       return id.toLowerCase()
   }
   return null
+}
+
+export function isWebExMeetingUrl(value: string): boolean {
+  return (
+    isWebExUrl(value) &&
+    /\/(?:meet|joinservice|meeting)(?:\/|$)/i.test(
+      new URL(normalizeRecordingUrl(value)!).pathname,
+    )
+  )
 }
 
 export function isArchiveUrl(value: string): boolean {
@@ -65,7 +74,7 @@ export function isArchiveUrl(value: string): boolean {
 }
 
 export function isRecordingCandidate(value: string): boolean {
-  if (isWebExUrl(value)) return true
+  if (isWebExUrl(value)) return !isWebExMeetingUrl(value)
   const normalized = normalizeRecordingUrl(value)
   if (!normalized) return false
   const url = new URL(normalized)

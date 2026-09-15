@@ -10,6 +10,21 @@ test('recognizes recording IDs consistently across playback and legacy links', (
   assert.equal(parser.extractVideoID(playback + 'not-an-id'), null)
   assert.equal(parser.extractVideoID('https://webex.com/ldr.php?RCID=garbage'), null)
 })
+test('recognizes the Distributed Systems recording with playback after the ID', () => {
+  const recording = 'https://politecnicomilano.webex.com/recordingservice/sites/politecnicomilano/recording/daebce95c96b49e99b9b2fe42df2b8c8/playback'
+  assert.equal(parser.extractVideoID(recording), 'daebce95c96b49e99b9b2fe42df2b8c8')
+  assert.equal(parser.resolvedRecordingUrl([recording]), recording)
+})
+test('live meeting links and meeting download IDs are not recordings', () => {
+  for (const link of [
+    'https://politecnicomilano.webex.com/meet/gianpaolo.cugola',
+    'https://politecnicomilano.webex.com/wbxmjs/joinservice/sites/politecnicomilano/meeting/download/d41a86ae91b8888b7056e2fd20cd2147?key=meet&parameter=gianpaolo.cugola',
+  ]) {
+    assert.equal(parser.extractVideoID(link), null)
+    assert.equal(parser.isRecordingCandidate(link), false)
+    assert.equal(parser.resolvedRecordingUrl([link]), null)
+  }
+})
 test('rejects lookalike hosts, embedded host strings and executable URLs', () => {
   for (const url of [`https://evilwebex.com/playback/${id}`, `https://webex.com.evil.test/playback/${id}`, `https://example.test/?redirect=${playback}`, `javascript:open('${playback}')`, `https://user:pass@webex.com/playback/${id}`]) {
     assert.equal(parser.extractVideoID(url), null, url)

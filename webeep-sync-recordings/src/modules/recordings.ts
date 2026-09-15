@@ -7,6 +7,7 @@ import { store } from "./store"
 import {
   extractVideoID,
   isWebExUrl,
+  isWebExMeetingUrl,
   isArchiveUrl,
   isRecordingCandidate,
   normalizeRecordingUrl,
@@ -83,7 +84,12 @@ export async function getAunicaUrlFromWebeep(
   `)
   if (page.login)
     throw new Error("WeBeep sign-in is required to read this course.")
-  for (const link of page.links) {
+  const links = [...page.links].sort(
+    (a, b) =>
+      Number(/archivio registrazioni|recordings archive/i.test(b.text)) -
+      Number(/archivio registrazioni|recordings archive/i.test(a.text)),
+  )
+  for (const link of links) {
     const values = [
       link.href,
       ...Array.from(
@@ -115,6 +121,14 @@ interface RecManIncrementalOptions {
   knownCandidateUrls?: ReadonlySet<string>
   onCandidateResolved?: (candidateUrl: string) => void
   onCandidateFailed?: (candidateUrl: string, message: string) => void
+}
+
+class ArchiveSessionExpiredError extends Error {
+  constructor() {
+    super(
+      "The Polimi archive session has expired. Sign in again and reopen Archivio registrazioni from the WeBeep course, then retry discovery.",
+    )
+  }
 }
 
 function isMeaningfulRecordingTitle(title?: string): title is string {
@@ -168,17 +182,22 @@ export async function extractWebExUrlsFromRecMan(
           !/^\\d+\\s*(?:min|mins|minutes|minuti|kb|mb|gb)$/i.test(text) && !/^\\d{1,2}[/.\\-]\\d{1,2}/.test(text);
         const topic = topicIndex >= 0 ? cells[topicIndex] : '';
         const title = validTitle(topic) ? topic : cells.filter(validTitle).sort((a,b) => b.length-a.length)[0];
-        return { href: element.href || element.getAttribute('data-href'), title, dateText };
+        return { href: element.href || element.getAttribute('data-href'), text: (element.textContent || '').trim(), title, dateText };
       });
       const pageLinks = links.filter(link => link.rel === 'next' || /^(successiv[ao]|next|[›»])$/i.test((link.textContent || '').trim()) || /[?&]action=(?:plen_(?:all|\\d+)|pnext|next)(?:&|$)/i.test(link.href || '')).map(link => link.href);
       const frames = Array.from(document.querySelectorAll('iframe[src], frame[src]')).map(frame => frame.src);
       return {
-        rows, pageLinks, frames, url: location.href,
+        rows, pageLinks, frames, url: location.href, title: document.title,
         html: docs.map(doc => doc.documentElement.outerHTML).join('\\n'),
         login: docs.some(doc => !!doc.querySelector('input[type="password"]')),
         archive: docs.some(doc => !!doc.querySelector('table, #form_tabella_transfers')),
       };
     `)
+    if (
+      /\/aunicalogin\/sessioneterminata\.jsp/i.test(page.url) ||
+      /\/aunicalogin\/sessioneterminata\.jsp/i.test(page.html)
+    )
+      throw new ArchiveSessionExpiredError()
     if (page.login)
       throw new Error(
         "Archive sign-in is required. Sign in again and retry discovery.",
@@ -226,9 +245,34 @@ export async function extractWebExUrlsFromRecMan(
     }
     const frames = (page.frames as string[]).filter(isArchiveUrl)
     pendingPages.push(...frames)
-    if (!page.archive && !combined.size && !frames.length)
+    // Moodle can render an intermediate page instead of redirecting to RecMan.
+    if (!page.archive && !combined.size) {
+      const namedEntries = page.rows.filter(
+        (row: { text?: string; href: string }) =>
+          /archivio registrazioni|recordings archive/i.test(row.text || "") &&
+          isArchiveUrl(normalizeRecordingUrl(row.href || "", page.url) || ""),
+      )
+      const entries = (namedEntries.length ? namedEntries : page.rows)
+        .map((row: { href: string }) =>
+          normalizeRecordingUrl(row.href || "", page.url),
+        )
+        .filter(
+          (url: string | null): url is string =>
+            !!url && isArchiveUrl(url) && !isRecordingCandidate(url),
+        )
+      pendingPages.push(
+        ...entries.filter((url: string) => !visitedPages.has(url)),
+      )
+    }
+    if (
+      !page.archive &&
+      !combined.size &&
+      !pendingPages.some(url => !visitedPages.has(url))
+    )
       throw new Error(
-        "The archive did not expose a recordings table or recording links. Discovery is incomplete.",
+        "The archive did not expose a recordings table or recording links. Discovery is incomplete. " +
+          `Opened ${new URL(page.url).origin}${new URL(page.url).pathname} ` +
+          `(${page.title || "untitled page"}; ${page.rows.length} links, ${page.frames.length} frames).`,
       )
   }
 
@@ -570,20 +614,34 @@ export async function checkForNewRecordings(
   const day = 24 * 60 * 60 * 1000
   const scannedArchives = new Map<string, RecManRecordingCandidate[]>()
 
-  const scanArchive = async (sourceUrl: string, context: string) => {
+  const scanArchive = async (
+    sourceUrl: string,
+    context: string,
+    courseId: number,
+  ) => {
     if (scannedArchives.has(sourceUrl)) return scannedArchives.get(sourceUrl)!
     const saved = (state.archives[sourceUrl] ||= { knownCandidateUrls: [] })
     const full = options.force || now - (saved.lastFullCheckedAt || 0) >= day
     const known = new Set(saved.knownCandidateUrls)
     const failed = new Set<string>()
-    const result = await extractWebExUrlsFromRecMan(sourceUrl, {
+    const incremental: RecManIncrementalOptions = {
       knownCandidateUrls: full ? undefined : known,
       onCandidateResolved: url => known.add(url),
       onCandidateFailed: (url, message) => {
         failed.add(url)
         failures.push(`${context}: ${message} (${url})`)
       },
-    })
+    }
+    let result: RecManRecordingCandidate[]
+    try {
+      result = await extractWebExUrlsFromRecMan(sourceUrl, incremental)
+    } catch (err) {
+      if (!(err instanceof ArchiveSessionExpiredError)) throw err
+      // A copied workflow URL cannot be reused after its Polimi session ends.
+      const entry = await getAunicaUrlFromWebeep(courseId)
+      if (!entry || entry === sourceUrl) throw err
+      result = await extractWebExUrlsFromRecMan(entry, incremental)
+    }
     // A failed link is retried on the next scan, even if it worked previously.
     saved.knownCandidateUrls = Array.from(known).filter(url => !failed.has(url))
     if (full && !failed.size) saved.lastFullCheckedAt = now
@@ -655,17 +713,35 @@ export async function checkForNewRecordings(
             (cached.kind === "unsupported" ? day / 4 : day)
         let candidates: RecManRecordingCandidate[] = []
         let archiveUrl: string | undefined
+        const archiveActivity =
+          isArchiveUrl(module.url) ||
+          (!isWebExUrl(module.url) &&
+            /archivio registrazioni|recordings archive/i.test(module.name))
         try {
-          if (fresh && cached.kind === "unsupported") {
+          if (isWebExMeetingUrl(module.url)) {
+            unsupportedActivities++
+            state.modules[key] = {
+              sourceUrl: module.url,
+              resolvedUrl: module.url,
+              kind: "unsupported",
+              checkedAt: now,
+            }
+            continue
+          }
+          if (fresh && cached.kind === "unsupported" && !archiveActivity) {
             unsupportedActivities++
             continue
           }
-          if (cached?.sourceUrl === module.url && cached.kind === "archive") {
+          if (
+            archiveActivity ||
+            (cached?.sourceUrl === module.url && cached.kind === "archive")
+          ) {
             // Re-enter through the source activity; RecMan session URLs may expire.
             archiveUrl = module.url
             candidates = await scanArchive(
               archiveUrl,
               `${course.name} / ${module.name}`,
+              course.id,
             )
           } else if (
             fresh &&
@@ -680,12 +756,6 @@ export async function checkForNewRecordings(
                 title: module.name,
               },
             ]
-          } else if (isArchiveUrl(module.url)) {
-            archiveUrl = module.url
-            candidates = await scanArchive(
-              archiveUrl,
-              `${course.name} / ${module.name}`,
-            )
           } else {
             const resolved = await recordingBrowser.navigateInTemporaryWindow(
               module.url,
@@ -717,6 +787,7 @@ export async function checkForNewRecordings(
                 candidates = await scanArchive(
                   archiveUrl,
                   `${course.name} / ${module.name}`,
+                  course.id,
                 )
               } else if (
                 /type\s*=\s*["']password/i.test(resolved.html) ||

@@ -89,6 +89,17 @@ class LoginManager extends EventEmitter {
           urls: ["https://webeep.polimi.it/my/"],
         },
         async (res, cb) => {
+          // The recordings browser shares this session and visits /my/ to
+          // check its cookies. Only the login window should acquire a token.
+          if (
+            !this.loginWindow ||
+            this.loginWindow.isDestroyed() ||
+            res.webContentsId !== this.loginWindow.webContents.id ||
+            res.resourceType !== "mainFrame"
+          ) {
+            cb({})
+            return
+          }
           // when the /my/ page is reached, login is completed, redirect to obtain token
           debug("Reached /my/ page, redirecting to moodle mobile token")
           cb({
