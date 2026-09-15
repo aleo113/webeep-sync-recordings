@@ -22,7 +22,7 @@ python3 scripts/workspace.py start
 
 Setup creates `Transcriber/.venv`, installs the Python package in editable mode, and installs both JavaScript projects using their lockfiles. It can be rerun after pulling changes. It does not overwrite existing configuration or install system packages. Internet access is required for dependencies and the downloader browser; Whisper downloads the selected model on first use.
 
-Sign in to WeBeep in the app and select the courses to sync. The desktop app finds the included Python environment and PoliWebex automatically. Check for recordings, download selected lectures, then transcribe them. Transcript-only and prompt-pack modes can run without the notes-generation login. Automated notes use the selected, locally authenticated Codex or Claude CLI; see the [Transcriber guide](Transcriber/README.md).
+Sign in to WeBeep in the app and select the courses to sync. The desktop app finds the included Python environment and PoliWebex automatically. Check for recordings, download selected lectures, then transcribe them. Transcript-only and prompt-pack modes can run without the notes-generation login. Automated notes use the selected, locally authenticated Codex, Claude or Antigravity CLI; see the [Transcriber guide](Transcriber/README.md).
 
 The setup helper also handles Windows virtual-environment paths (`python` can replace `python3`). On macOS and Windows, install the corresponding native tools and browser dependencies first. Linux is the locally verified development platform.
 

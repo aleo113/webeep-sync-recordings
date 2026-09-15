@@ -66,6 +66,8 @@ class ProcessOptions:
     whisper_retry_model: str = "medium"
     whisper_vad_filter: bool = True
     whisper_max_retry_fraction: float = 0.25
+    antigravity_bin: str = "agy"
+    antigravity_model: str = ""
 
 
 def download_recording(
@@ -115,7 +117,7 @@ def process_media(
         raise TranscriberError("MEDIA_NOT_FOUND", f"Media file not found: {media_path}")
     if options.notes_mode not in {"transcript-only", "prompt-pack", "api"}:
         raise TranscriberError("INVALID_NOTES_MODE", f"Unsupported notes mode: {options.notes_mode}")
-    if options.notes_provider not in {"codex", "claude"}:
+    if options.notes_provider not in {"codex", "claude", "antigravity"}:
         raise TranscriberError(
             "INVALID_NOTES_PROVIDER", f"Unsupported notes provider: {options.notes_provider}"
         )
@@ -205,6 +207,8 @@ def process_media(
             codex_model=options.codex_model,
             codex_reasoning_effort=options.codex_reasoning_effort,
             codex_timeout_seconds=options.codex_timeout_seconds,
+            antigravity_bin=options.antigravity_bin,
+            antigravity_model=options.antigravity_model,
             claude_bin=options.claude_bin,
             claude_model=options.claude_model,
             max_images=options.max_slide_images,
@@ -234,13 +238,15 @@ def process_media(
         matches,
         metadata_path,
         notes_model=(
-            (options.claude_model if options.notes_provider == "claude" else options.codex_model)
+            {
+                "codex": options.codex_model,
+                "claude": options.claude_model,
+                "antigravity": options.antigravity_model or "CLI default",
+            }[options.notes_provider]
             if options.notes_mode == "api"
             else None
         ),
-        notes_provider=(
-            "claude-cli" if options.notes_provider == "claude" else "codex-cli"
-        ),
+        notes_provider=f"{options.notes_provider}-cli",
         notes_reasoning_effort=(
             options.codex_reasoning_effort
             if options.notes_mode == "api" and options.notes_provider == "codex"

@@ -40,6 +40,8 @@ def generate_notes_markdown(
     video_frame_interval_seconds: int = 60,
     max_video_frames: int = 8,
     max_total_images: int = 12,
+    antigravity_bin: str = "agy",
+    antigravity_model: str = "",
 ) -> str:
     slide_output_dir = (visual_artifacts_dir / "slides") if visual_artifacts_dir else notes_assets_dir
     slide_render_limit = max(0, min(max_images, max_total_images, 8))
@@ -88,16 +90,24 @@ def generate_notes_markdown(
     )
     attached_visuals = [*rendered_images, *video_frames]
     image_paths = [Path(str(image["path"])) for image in attached_visuals]
-    if notes_provider not in {"codex", "claude"}:
+    if notes_provider not in {"codex", "claude", "antigravity"}:
         raise RuntimeError(f"Unsupported notes provider: {notes_provider}")
     LOGGER.info(
         "Invoking %s with %d slide images and %d video frames (model=%s).",
         notes_provider,
         len(rendered_images),
         len(video_frames),
-        claude_model if notes_provider == "claude" else codex_model,
+        {
+            "codex": codex_model,
+            "claude": claude_model,
+            "antigravity": antigravity_model or "CLI default",
+        }[notes_provider],
     )
-    if notes_provider == "claude":
+    if notes_provider == "antigravity":
+        notes = _run_antigravity(
+            prompt, antigravity_bin, antigravity_model, codex_timeout_seconds, image_paths
+        )
+    elif notes_provider == "claude":
         notes = _run_claude(
             prompt=prompt,
             claude_bin=claude_bin,
@@ -421,6 +431,83 @@ def _run_claude(
     if not result.stdout.strip():
         raise RuntimeError("Claude completed successfully but returned an empty note.")
     return result.stdout.strip()
+
+
+def _run_antigravity(
+    prompt: str,
+    antigravity_bin: str,
+    model: str,
+    timeout_seconds: int,
+    image_paths: list[Path],
+) -> str:
+    resolved_bin = shutil.which(antigravity_bin)
+    if not resolved_bin:
+        raise RuntimeError(
+            "Antigravity CLI was not found. Install agy, put it on PATH, "
+            "and run `agy` once to sign in with Google."
+        )
+    try:
+        with tempfile.TemporaryDirectory(prefix="transcriber-antigravity-") as directory:
+            run_dir = Path(directory)
+            attachments = []
+            for index, source in enumerate(image_paths, start=1):
+                target = run_dir / f"visual-{index}{source.suffix}"
+                shutil.copy2(source, target)
+                attachments.append(target.name)
+            if attachments:
+                prompt += (
+                    "\n\nRead every attached image file in the current workspace before "
+                    "writing the note. These files match the <attached_visuals> order:\n"
+                    + "\n".join(attachments)
+                )
+            command = [
+                resolved_bin,
+                "--input-format", "stream-json",
+                "--output-format", "stream-json",
+                "--sandbox",
+            ]
+            if model.strip():
+                command.extend(["--model", model.strip()])
+            # Keep large transcripts off argv. Closing stdin completes this single turn.
+            result = subprocess.run(
+                command,
+                input=json.dumps({"event": "user", "message": {"content": prompt}}) + "\n",
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=timeout_seconds,
+                cwd=directory,
+            )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"Antigravity note generation timed out after {timeout_seconds} seconds."
+        ) from exc
+    if result.returncode != 0:
+        error = result.stderr.strip() or "unknown Antigravity CLI error"
+        raise RuntimeError(
+            "Antigravity note generation failed. Update agy if streaming flags are "
+            "unsupported, run `agy` once to sign in, and check your model and quota.\n"
+            + error
+        )
+    try:
+        events = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+        results = [
+            event.get("result") for event in events
+            if isinstance(event, dict) and event.get("event") == "result"
+        ]
+        if len(results) != 1 or not isinstance(results[0], dict):
+            raise ValueError("expected one completed result")
+        final = results[0]
+        if final.get("status") != "SUCCESS":
+            raise RuntimeError(
+                f"Antigravity note generation failed: {final.get('error') or final.get('status')}"
+            )
+        response = final.get("response")
+        if not isinstance(response, str) or not response.strip():
+            raise ValueError("empty note")
+        return response.strip()
+    except ValueError as exc:
+        raise RuntimeError(f"Antigravity returned an invalid response: {exc}") from exc
 
 
 def normalize_obsidian_math(markdown: str) -> str:

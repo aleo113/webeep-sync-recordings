@@ -17,7 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Download lecture videos with PoliWebex, transcribe them, match relevant PDFs, "
-            "and generate either manual prompt packs or Codex-powered Obsidian lecture notes."
+            "and generate either manual prompt packs or AI-generated Obsidian lecture notes."
         )
     )
     parser.add_argument(
@@ -62,11 +62,11 @@ def parse_args() -> argparse.Namespace:
         "--notes-mode",
         choices=["transcript-only", "prompt-pack", "api"],
         default=None,
-        help="Choose transcript-only output, manual prompt packs, or Codex-generated Obsidian notes.",
+        help="Choose transcript-only output, manual prompt packs, or AI-generated Obsidian notes.",
     )
     parser.add_argument(
         "--notes-provider",
-        choices=["codex", "claude"],
+        choices=["codex", "claude", "antigravity"],
         default=None,
         help="CLI used for api-mode note generation (default: codex).",
     )
@@ -74,6 +74,11 @@ def parse_args() -> argparse.Namespace:
         "--codex-model",
         default=None,
         help="Codex model used for note generation (default: gpt-5.6-luna).",
+    )
+    parser.add_argument(
+        "--antigravity-model",
+        default=None,
+        help="Antigravity model ID (default: use the model configured in agy).",
     )
     parser.add_argument(
         "--claude-model",
@@ -90,7 +95,7 @@ def parse_args() -> argparse.Namespace:
         "--video-frames",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Enable selective lecture-video frames in Codex notes (default: enabled).",
+        help="Enable selective lecture-video frames in generated notes (default: enabled).",
     )
     parser.add_argument(
         "--video-frame-interval",
@@ -108,7 +113,7 @@ def parse_args() -> argparse.Namespace:
         "--max-total-images",
         type=int,
         default=None,
-        help="Hard combined limit for slide and video images sent to Codex (default: 12).",
+        help="Hard combined limit for slide and video images sent to the notes provider (default: 12).",
     )
     parser.add_argument(
         "--prefetch-downloads",
@@ -229,7 +234,7 @@ def prompt_notes_mode(args: argparse.Namespace) -> str:
     print("Choose output mode:")
     print("  1) transcript only")
     print("  2) prompt pack for manual note writing")
-    print("  3) Codex-generated Obsidian lecture notes")
+    print("  3) AI-generated Obsidian lecture notes")
 
     raw_choice = input("Select 1, 2, or 3 [3]: ").strip()
     if raw_choice in {"2", "prompt-pack", "prompt pack"}:
@@ -266,6 +271,7 @@ def main() -> int:
             explicit_whisper_num_cores=args.num_cores,
             explicit_notes_mode=notes_mode,
             explicit_notes_provider=args.notes_provider,
+            explicit_antigravity_model=args.antigravity_model,
             explicit_codex_model=args.codex_model,
             explicit_claude_model=args.claude_model,
             explicit_codex_reasoning_effort=args.codex_reasoning_effort,

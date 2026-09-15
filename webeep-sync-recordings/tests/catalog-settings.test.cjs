@@ -44,3 +44,10 @@ test('Claude provider settings and empty default models are accepted', () => {
   assert.deepEqual(validateSettingsUpdate({ transcriberNotesProvider: 'claude', transcriberClaudeModel: '' }), { transcriberNotesProvider: 'claude', transcriberClaudeModel: '' })
   assert.throws(() => validateSettingsUpdate({ transcriberNotesProvider: 'unknown' }))
 })
+test('Antigravity settings accept a CLI default or explicit model', () => {
+  for (const model of ['', 'gemini-model']) {
+    const settings = { transcriberNotesProvider: 'antigravity', transcriberAntigravityModel: model }
+    assert.deepEqual(validateSettingsUpdate(settings), settings)
+  }
+  assert.throws(() => validateSettingsUpdate({ transcriberAntigravityModel: 123 }))
+})

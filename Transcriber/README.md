@@ -11,7 +11,7 @@ This project automates lecture note preparation with this pipeline:
 5. Select a small set of sharp, visually novel video frames for blackboard work
    and demonstrations not represented by the PDFs
 6. Generate ready-to-use Obsidian lecture notes with the locally authenticated
-   Codex CLI, inline slide images, MathJax formulas, course-material links, and
+   Codex, Claude or Antigravity CLI, inline slide images, MathJax formulas, course-material links, and
    JSON retrieval evidence. Transcript-only and manual prompt-pack modes remain available.
 
 For the combined desktop app, start with the [repository setup guide](../README.md). The commands below are for working directly inside `Transcriber/`.
@@ -42,10 +42,42 @@ codex login
 codex login status
 ```
 
-For Claude, install the Claude Code CLI and run `claude` once to sign in. Select Claude in the app’s Transcription settings, or pass `--notes-provider claude --claude-model sonnet` to the standalone CLI. Both providers use the same local Whisper transcript and selected visual context.
+For Claude, install the Claude Code CLI and run `claude` once to sign in. Select Claude in the app’s Transcription settings, or pass `--notes-provider claude --claude-model sonnet` to the standalone CLI. All providers use the same local Whisper transcript and selected visual context.
 
 The default note model is `gpt-5.6-luna` with `high` reasoning. `codex exec`
 reuses the local ChatGPT login, so no OpenAI API key is needed.
+
+## Antigravity with a Google subscription
+
+1. Install or update the official [Antigravity CLI](https://antigravity.google/docs/cli/install).
+   This integration requires `agy` with `--input-format stream-json` and
+   `--output-format stream-json` support. Older IDE launcher commands are insufficient.
+2. Run `agy` in a terminal and sign in with the Google account that owns your
+   subscription. Keep the default account authentication; Gemini API-key mode
+   uses separate API access. The app reuses the CLI login and does not store Google credentials.
+3. In **Settings → Transcription**, choose generated notes and **Antigravity (Gemini)**.
+   Leave the model empty to use your CLI selection, or enter a model ID available
+   to your account (`agy models`). Restart the app after installing the CLI so it
+   inherits the updated PATH.
+
+For the standalone CLI, add `--notes-provider antigravity` to your normal command.
+Optionally add `--antigravity-model MODEL_ID`. Environment equivalents are
+`NOTES_PROVIDER=antigravity`, `ANTIGRAVITY_MODEL` (empty uses the CLI default), and
+`ANTIGRAVITY_BIN` (default `agy`). The existing `CODEX_TIMEOUT_SECONDS` also limits
+Antigravity runs. Metadata records an unpinned model as `CLI default`.
+
+**Google AI Plus:** you can sign in with that account, but Plus does not imply
+Pro/Ultra quotas. Google's [plan documentation](https://antigravity.google/docs/plans/)
+assigns accounts outside Pro/Ultra the baseline weekly quota. Access, models and
+remaining quota are determined by Google; check them in `agy` before a large batch.
+
+The transcript is sent through stdin and selected images are copied into a
+temporary workspace. The app requests the CLI sandbox and removes that workspace
+after the run. Antigravity's own user settings, permissions, plugins and conversation
+storage still apply; this integration does not disable them. Authentication,
+quota, unsupported CLI versions and incomplete responses are reported as errors.
+For manual use in the Antigravity editor or Gemini web app, select prompt-pack mode
+and supply the generated prompt and visual assets yourself.
 
 ## Setup
 

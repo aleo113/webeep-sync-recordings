@@ -58,6 +58,8 @@ export class TranscriberWorker extends EventEmitter {
       // are dropped by JSON.stringify and the worker falls back to its default.
       codex_model:
         store.data.settings.transcriberCodexModel?.trim() || undefined,
+      antigravity_model:
+        store.data.settings.transcriberAntigravityModel?.trim() || undefined,
       claude_model:
         store.data.settings.transcriberClaudeModel?.trim() || undefined,
     })

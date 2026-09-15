@@ -376,12 +376,16 @@ export const SettingsModal: FC<{ onClose: () => void }> = ({ onClose }) => {
                         onChange={event =>
                           update(
                             "transcriberNotesProvider",
-                            event.target.value as "codex" | "claude",
+                            event.target
+                              .value as Settings["transcriberNotesProvider"],
                           )
                         }
                       >
                         <option value="codex">Codex (ChatGPT)</option>
                         <option value="claude">Claude</option>
+                        <option value="antigravity">
+                          Antigravity (Gemini)
+                        </option>
                       </select>
                       <span className="desc">
                         {t("transcriberNotesProvider_desc")}
@@ -395,20 +399,26 @@ export const SettingsModal: FC<{ onClose: () => void }> = ({ onClose }) => {
                         id="setting-notes-model"
                         type="text"
                         value={
-                          (settings.transcriberNotesProvider === "claude"
-                            ? settings.transcriberClaudeModel
-                            : settings.transcriberCodexModel) || ""
+                          (settings.transcriberNotesProvider === "antigravity"
+                            ? settings.transcriberAntigravityModel
+                            : settings.transcriberNotesProvider === "claude"
+                              ? settings.transcriberClaudeModel
+                              : settings.transcriberCodexModel) || ""
                         }
                         placeholder={
-                          settings.transcriberNotesProvider === "claude"
-                            ? "sonnet"
-                            : "gpt-5.6-luna"
+                          settings.transcriberNotesProvider === "antigravity"
+                            ? t("antigravityDefaultModel")
+                            : settings.transcriberNotesProvider === "claude"
+                              ? "sonnet"
+                              : "gpt-5.6-luna"
                         }
                         onChange={event =>
                           update(
-                            settings.transcriberNotesProvider === "claude"
-                              ? "transcriberClaudeModel"
-                              : "transcriberCodexModel",
+                            settings.transcriberNotesProvider === "antigravity"
+                              ? "transcriberAntigravityModel"
+                              : settings.transcriberNotesProvider === "claude"
+                                ? "transcriberClaudeModel"
+                                : "transcriberCodexModel",
                             event.target.value,
                           )
                         }

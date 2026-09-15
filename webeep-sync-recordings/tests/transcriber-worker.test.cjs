@@ -45,3 +45,11 @@ test('macOS workers find nvm, Homebrew and CLI tools before stale system paths',
     else process.env.PATH = originalPath
   }
 })
+test('Antigravity selection and optional model reach the Python worker', async () => {
+  for (const model of ['', ' selected-model ']) {
+    const { worker, launches } = workerWith({ transcriberNotesMode: 'api', transcriberNotesProvider: 'antigravity', transcriberAntigravityModel: model })
+    await worker.start({ recordingId: 'id', mediaPath: '/video.mp4', sourceUrl: '', materialsPath: '/materials', outputPath: '/notes' })
+    assert.equal(launches[0].command.notes_provider, 'antigravity')
+    assert.equal(launches[0].command.antigravity_model, model.trim() || undefined)
+  }
+})

@@ -160,7 +160,8 @@
     "save": "Save changes",
     "invalidNumber": "Enter a whole number between {{min}} and {{max}}.",
     "transcriberNotesProvider": "Notes generator",
-    "transcriberNotesProvider_desc": "Use the locally signed-in Codex or Claude CLI to generate notes.",
+    "transcriberNotesProvider_desc": "Use the locally signed-in Codex, Claude or Antigravity CLI to generate notes. For Antigravity, run agy once to sign in with Google.",
+    "antigravityDefaultModel": "Use the model configured in agy",
     "transcriberNotesModel": "Notes model",
     "transcriberNotesModel_desc": "Leave blank to use the selected provider’s default model."
   },

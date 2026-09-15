@@ -30,6 +30,8 @@ class AppConfig:
     whisper_retry_model: str = "medium"
     whisper_vad_filter: bool = True
     whisper_max_retry_fraction: float = 0.25
+    antigravity_bin: str = "agy"
+    antigravity_model: str = ""
 
 
 def _read_env_file_value(key: str, env_file: Path = Path(".env")) -> str:
@@ -70,6 +72,7 @@ def from_env(
     explicit_whisper_retry_model: str | None = None,
     explicit_whisper_vad_filter: bool | None = None,
     explicit_whisper_max_retry_fraction: float | None = None,
+    explicit_antigravity_model: str | None = None,
 ) -> AppConfig:
     env_path = explicit_poliwebex_path or os.getenv("POLIWEBEX_PATH", "") or _read_env_file_value("POLIWEBEX_PATH")
     if not env_path:
@@ -100,8 +103,8 @@ def from_env(
     notes_provider = (
         explicit_notes_provider or os.getenv("NOTES_PROVIDER", "codex")
     ).strip().lower()
-    if notes_provider not in {"codex", "claude"}:
-        raise ValueError("NOTES_PROVIDER must be 'codex' or 'claude'.")
+    if notes_provider not in {"codex", "claude", "antigravity"}:
+        raise ValueError("NOTES_PROVIDER must be 'codex', 'claude', or 'antigravity'.")
     codex_bin = os.getenv("CODEX_BIN", "codex").strip() or "codex"
     codex_model = (explicit_codex_model or os.getenv("CODEX_MODEL", "gpt-5.6-luna")).strip()
     claude_bin = os.getenv("CLAUDE_BIN", "claude").strip() or "claude"
@@ -187,6 +190,12 @@ def from_env(
         codex_model=codex_model,
         codex_reasoning_effort=codex_reasoning_effort,
         codex_timeout_seconds=codex_timeout_seconds,
+        antigravity_bin=os.getenv("ANTIGRAVITY_BIN", "agy").strip() or "agy",
+        antigravity_model=(
+            explicit_antigravity_model
+            if explicit_antigravity_model is not None
+            else os.getenv("ANTIGRAVITY_MODEL", "")
+        ).strip(),
         claude_bin=claude_bin,
         claude_model=claude_model,
         max_slide_images=max_slide_images,

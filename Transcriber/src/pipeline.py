@@ -270,6 +270,8 @@ def run_pipeline(
                     codex_model=config.codex_model,
                     codex_reasoning_effort=config.codex_reasoning_effort,
                     codex_timeout_seconds=config.codex_timeout_seconds,
+                    antigravity_bin=config.antigravity_bin,
+                    antigravity_model=config.antigravity_model,
                     claude_bin=config.claude_bin,
                     claude_model=config.claude_model,
                     max_images=config.max_slide_images,
@@ -307,17 +309,15 @@ def run_pipeline(
                 matches=matches,
                 metadata_path=metadata_json,
                 notes_model=(
-                    (
-                        config.claude_model
-                        if config.notes_provider == "claude"
-                        else config.codex_model
-                    )
+                    {
+                        "codex": config.codex_model,
+                        "claude": config.claude_model,
+                        "antigravity": config.antigravity_model or "CLI default",
+                    }[config.notes_provider]
                     if config.notes_mode == "api"
                     else None
                 ),
-                notes_provider=(
-                    "claude-cli" if config.notes_provider == "claude" else "codex-cli"
-                ),
+                notes_provider=f"{config.notes_provider}-cli",
                 notes_reasoning_effort=(
                     config.codex_reasoning_effort
                     if config.notes_mode == "api" and config.notes_provider == "codex"

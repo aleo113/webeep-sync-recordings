@@ -39,7 +39,7 @@ const choices: Record<string, readonly string[]> = {
     "large-v3",
     "turbo",
   ],
-  transcriberNotesProvider: ["codex", "claude"],
+  transcriberNotesProvider: ["codex", "claude", "antigravity"],
   transcriberNotesMode: ["transcript-only", "prompt-pack", "api"],
 }
 
@@ -63,7 +63,11 @@ export function validateSettingsUpdate(value: unknown): Settings {
       if (typeof entry !== "boolean")
         throw new Error(`${key}: expected a boolean.`)
     } else if (
-      ["transcriberCodexModel", "transcriberClaudeModel"].includes(key)
+      [
+        "transcriberCodexModel",
+        "transcriberClaudeModel",
+        "transcriberAntigravityModel",
+      ].includes(key)
     ) {
       if (
         typeof entry !== "string" ||

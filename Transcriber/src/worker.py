@@ -38,6 +38,8 @@ def _options(payload: dict[str, Any]) -> ProcessOptions:
         codex_model=_text_option(payload, "codex_model", "gpt-5.6-luna"),
         codex_reasoning_effort=payload.get("codex_reasoning_effort", "high"),
         codex_timeout_seconds=int(payload.get("codex_timeout_seconds", 900)),
+        antigravity_bin=_text_option(payload, "antigravity_bin", "agy"),
+        antigravity_model=_text_option(payload, "antigravity_model", ""),
         claude_bin=payload.get("claude_bin", "claude"),
         claude_model=_text_option(payload, "claude_model", "sonnet"),
         max_slide_images=int(payload.get("max_slide_images", 8)),
